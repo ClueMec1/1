@@ -433,9 +433,21 @@
   .cook-ingredient-list { text-align: left; max-width: 340px; margin: 0 auto; padding-left: 22px; color: var(--ink); }
   .cook-ingredient-list li { margin-bottom: 4px; }
   .cook-tip { background: var(--amber-tint); color: var(--amber-dark); padding: 10px 16px; border-radius: var(--radius-sm); font-size: 0.85rem; max-width: 380px; margin: 0; }
-  .cook-timer { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-  .cook-timer #cook-timer-display { font-family: var(--font-display); font-size: 3.2rem; font-weight: 700; min-width: 60px; line-height: 1; }
-  .cook-timer-adjust-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .cook-timer { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .cook-timer-ring-wrap { position: relative; width: 150px; height: 150px; }
+  .cook-timer-ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .cook-timer-ring-bg { fill: none; stroke: var(--line); stroke-width: 8; }
+  .cook-timer-ring-fg { fill: none; stroke: var(--turquoise); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 326.7; stroke-dashoffset: 0; transition: stroke-dashoffset 1s linear, stroke 0.3s; }
+  .cook-timer-ring-fg.almost-done { stroke: var(--pink); }
+  .cook-timer-digits { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: var(--font-display); font-size: 2.1rem; font-weight: 700; }
+  .cook-timer-adjust-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .cook-timer-adjust-btn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    width: 56px; height: 56px; border-radius: 16px; background: var(--surface); border: 1.5px solid var(--line); flex-shrink: 0;
+  }
+  .cook-timer-adjust-icon { font-size: 1.4rem; font-weight: 700; line-height: 1; color: var(--turquoise-dark); }
+  .cook-timer-adjust-label { font-size: 0.6rem; color: var(--muted); }
+  .cook-tap-hint { font-size: 0.78rem; color: var(--muted); text-align: center; margin: 6px 0 0; opacity: 0.85; }
   .cook-controls { display: flex; gap: 16px; padding: 14px; padding-bottom: calc(14px + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid var(--line); flex-shrink: 0; justify-content: center; }
   .cook-arrow-btn {
     width: 64px; height: 64px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--line);
@@ -443,6 +455,7 @@
   }
   .cook-arrow-btn .icon { width: 26px; height: 26px; }
   .cook-arrow-btn.primary { background: var(--amber); border-color: var(--amber); color: #fff; }
+  #cook-shake-toggle-btn.on { background: var(--turquoise); color: #fff; }
   #luna-indicator.on { display: flex !important; }
   .luna-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--violet); display: inline-block; animation: luna-pulse 1.4s infinite; }
   @keyframes luna-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
@@ -951,25 +964,33 @@
         <div id="luna-indicator" style="display:none; align-items:center; gap:6px; font-size:0.72rem; color:var(--violet-dark); background:var(--violet-tint); padding:5px 10px; border-radius:999px; cursor:pointer;" title="Tap for the list of things you can say">
           <span class="luna-dot"></span> Luna
         </div>
-        <button type="button" class="btn ghost sm" id="cook-ask-btn" style="margin-left:auto;">❓ Ask a question</button>
+        <button type="button" class="icon-btn" id="cook-shake-toggle-btn" title="Shake to advance (off)" style="margin-left:auto;">📳</button>
+        <button type="button" class="btn ghost sm" id="cook-ask-btn">❓ Ask a question</button>
       </div>
       <div id="luna-help-strip" style="display:none;"></div>
-      <div class="cook-body">
+      <div class="cook-body" id="cook-body">
         <div class="cook-counter" id="cook-step-counter"></div>
         <ul class="cook-ingredient-list" id="cook-ingredient-list" style="display:none;"></ul>
         <div class="cook-step-text" id="cook-step-text"></div>
         <p class="cook-tip" id="cook-tip" style="display:none;"></p>
         <div class="cook-timer" id="cook-timer-wrap" style="display:none;">
-          <span id="cook-timer-display">0:00</span>
+          <div class="cook-timer-ring-wrap">
+            <svg viewBox="0 0 120 120" class="cook-timer-ring">
+              <circle cx="60" cy="60" r="52" class="cook-timer-ring-bg" />
+              <circle cx="60" cy="60" r="52" class="cook-timer-ring-fg" id="cook-timer-ring-fg" />
+            </svg>
+            <span id="cook-timer-display" class="cook-timer-digits">0:00</span>
+          </div>
           <div class="cook-timer-adjust-row">
-            <button type="button" class="btn ghost sm" id="cook-timer-minus1m">−1:00</button>
-            <button type="button" class="btn ghost sm" id="cook-timer-minus10s">−0:10</button>
+            <button type="button" class="cook-timer-adjust-btn" id="cook-timer-minus1m"><span class="cook-timer-adjust-icon">−</span><span class="cook-timer-adjust-label">1 min</span></button>
+            <button type="button" class="cook-timer-adjust-btn" id="cook-timer-minus10s"><span class="cook-timer-adjust-icon">−</span><span class="cook-timer-adjust-label">10 sec</span></button>
             <button type="button" class="btn turquoise sm" id="cook-timer-pause-btn">Pause</button>
-            <button type="button" class="btn ghost sm" id="cook-timer-plus10s">+0:10</button>
-            <button type="button" class="btn ghost sm" id="cook-timer-plus1m">+1:00</button>
+            <button type="button" class="cook-timer-adjust-btn" id="cook-timer-plus10s"><span class="cook-timer-adjust-icon">+</span><span class="cook-timer-adjust-label">10 sec</span></button>
+            <button type="button" class="cook-timer-adjust-btn" id="cook-timer-plus1m"><span class="cook-timer-adjust-icon">+</span><span class="cook-timer-adjust-label">1 min</span></button>
           </div>
           <button type="button" class="btn ghost sm" id="cook-timer-btn">Start timer</button>
         </div>
+        <p class="cook-tap-hint" id="cook-tap-hint">👆 Tap anywhere to go to the next step</p>
       </div>
       <div class="cook-controls">
         <button class="icon-btn cook-arrow-btn" id="cook-prev-btn" title="Previous step"></button>
@@ -1044,7 +1065,7 @@
     <div class="sheet" style="max-width:520px;">
       <h2 id="recipe-overlay-title">New recipe</h2>
       <div class="field"><label class="field-label">Title</label><input type="text" id="recipe-title-input" class="input" /></div>
-      <div class="field"><label class="field-label">This recipe makes (servings)</label><input type="number" id="recipe-servings-input" class="input" min="1" value="4" /></div>
+      <div class="field"><label class="field-label">This recipe serves how many people?</label><input type="number" id="recipe-servings-input" class="input" min="1" placeholder="e.g. 4" required /></div>
       <div class="field">
         <label class="field-label">Paste the ingredients</label>
         <textarea id="recipe-ingredients-input" class="input" rows="5" placeholder="One per line works best…"></textarea>
@@ -4963,7 +4984,7 @@ ${factsText}`;
     document.getElementById("recipe-overlay-title").textContent = "New recipe";
     document.getElementById("recipe-save-btn").textContent = "Create recipe";
     document.getElementById("recipe-title-input").value = "";
-    document.getElementById("recipe-servings-input").value = "4";
+    document.getElementById("recipe-servings-input").value = "";
     document.getElementById("recipe-ingredients-input").value = "";
     document.getElementById("recipe-steps-input").value = "";
     document.getElementById("recipe-overlay").classList.add("open");
@@ -5018,8 +5039,9 @@ ${rawSteps}`;
     const servings = Math.max(1, parseInt(document.getElementById("recipe-servings-input").value, 10) || 4);
     const rawIngredients = document.getElementById("recipe-ingredients-input").value.trim();
     const rawSteps = document.getElementById("recipe-steps-input").value.trim();
-    if (!title || !rawIngredients || !rawSteps) {
-      await showAlert("Please add a title, the ingredients, and the steps.");
+    const servingsRaw = document.getElementById("recipe-servings-input").value.trim();
+    if (!title || !rawIngredients || !rawSteps || !servingsRaw) {
+      await showAlert("Please add a title, how many it serves, the ingredients, and the steps.");
       return;
     }
     const saveBtn = document.getElementById("recipe-save-btn");
@@ -5444,9 +5466,10 @@ ${rawSteps}`;
   // reliable enough to risk, so this stays scoped to the ingredient list.
   function showServingPrompt(recipe) {
     const baseServings = recipe.servings || 4;
-    document.getElementById("serving-prompt-note").textContent = `This recipe makes ${baseServings}.`;
+    document.getElementById("serving-prompt-note").textContent = `This recipe serves ${baseServings}.`;
     document.getElementById("serving-prompt-input").value = baseServings;
     document.getElementById("serving-prompt-overlay").classList.add("open");
+    warmUpSpeechEngine(); // as early as possible — by the time cooking actually starts, the engine has had this whole dialog's worth of lead time to warm up
     const startBtn = document.getElementById("serving-prompt-start-btn");
     const cancelBtn = document.getElementById("serving-prompt-cancel-btn");
     const onStart = () => {
@@ -5509,6 +5532,22 @@ ${rawSteps}`;
       steps: Array.isArray(p && p.steps) ? p.steps : []
     }));
     const seq = [];
+    // A quick spoken guide to the controls, shown once ever (per device) —
+    // before the ingredients, exactly as asked, since it's more useful to
+    // know these exist before you're mid-recipe than to discover them by
+    // accident. This is also *why* the speech engine is warmed up as early
+    // as the serving-size dialog now, rather than only when Cook Mode
+    // itself opens — by the time this first sentence needs to play, the
+    // engine has had that whole dialog's worth of head start.
+    if (!localStorage.getItem("neumify_cook_intro_seen")) {
+      const controlLines = [
+        "Quick guide before we start.",
+        "Tap anywhere on the screen to move to the next step — handy if your hands are dirty.",
+        "Say Luna, followed by a command like next, back, or pause, if your device supports it.",
+        'Tap "Ask a question" any time to ask the AI something about this recipe.'
+      ];
+      seq.push({ type: "intro-instructions", heading: "Quick guide", speakParts: controlLines });
+    }
     const allIngredients = parts.flatMap((p) => p.ingredients);
     seq.push({
       type: "intro", heading: "All the ingredients", ingredients: allIngredients,
@@ -5564,6 +5603,76 @@ ${rawSteps}`;
     }
   });
 
+  // ---- Shake to advance — entirely the person's own choice (a toggle in
+  // Cook Mode's header, off by default), for exactly the same "hands are
+  // dirty" reason as tap-anywhere, without needing to touch the screen at
+  // all. The preference itself persists across sessions; the actual
+  // devicemotion listener is only ever attached while Cook Mode is open.
+  let shakePreferenceEnabled = localStorage.getItem("neumify_shake_enabled") === "true";
+  let shakeListenerAttached = false;
+  let lastShakeTime = 0;
+  let lastShakeAcceleration = null;
+  function handleDeviceMotion(event) {
+    const acc = event.accelerationIncludingGravity;
+    if (!acc || acc.x === null || acc.x === undefined) return;
+    if (lastShakeAcceleration) {
+      const delta = Math.abs(acc.x - lastShakeAcceleration.x) + Math.abs(acc.y - lastShakeAcceleration.y) + Math.abs(acc.z - lastShakeAcceleration.z);
+      const now = Date.now();
+      if (delta > 25 && now - lastShakeTime > 1200) { // a real shake, not just being carried around, with a cooldown so one shake doesn't skip multiple steps
+        lastShakeTime = now;
+        cookNext();
+      }
+    }
+    lastShakeAcceleration = acc;
+  }
+  function attachShakeListenerIfEnabled() {
+    if (!shakePreferenceEnabled || shakeListenerAttached) return;
+    window.addEventListener("devicemotion", handleDeviceMotion);
+    shakeListenerAttached = true;
+  }
+  function detachShakeListener() {
+    if (shakeListenerAttached) { window.removeEventListener("devicemotion", handleDeviceMotion); shakeListenerAttached = false; }
+    lastShakeAcceleration = null;
+  }
+  function updateShakeToggleUI() {
+    const btn = document.getElementById("cook-shake-toggle-btn");
+    if (!btn) return;
+    btn.classList.toggle("on", shakePreferenceEnabled);
+    btn.title = shakePreferenceEnabled ? "Shake to advance is on — tap to turn off" : "Shake to advance is off — tap to turn on";
+  }
+  async function toggleShakeToAdvance() {
+    if (shakePreferenceEnabled) {
+      shakePreferenceEnabled = false;
+      localStorage.setItem("neumify_shake_enabled", "false");
+      detachShakeListener();
+      updateShakeToggleUI();
+      return;
+    }
+    // Turning it on needs a real permission prompt on iOS specifically,
+    // and that prompt only works when triggered directly by a user
+    // gesture — this click is that gesture.
+    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+      try {
+        const result = await DeviceMotionEvent.requestPermission();
+        if (result !== "granted") {
+          await showAlert("Motion access wasn't granted, so shake-to-advance can't turn on.");
+          return;
+        }
+      } catch (e) {
+        await showAlert("This device doesn't support shake-to-advance.");
+        return;
+      }
+    } else if (typeof DeviceMotionEvent === "undefined") {
+      await showAlert("This device doesn't support shake-to-advance.");
+      return;
+    }
+    shakePreferenceEnabled = true;
+    localStorage.setItem("neumify_shake_enabled", "true");
+    attachShakeListenerIfEnabled();
+    updateShakeToggleUI();
+  }
+  document.getElementById("cook-shake-toggle-btn").addEventListener("click", toggleShakeToAdvance);
+
   function startCookMode(recipe, scaleFactor) {
     try {
       currentCookRecipe = recipe;
@@ -5575,6 +5684,8 @@ ${rawSteps}`;
       warmUpSpeechEngine();
       startLunaListening();
       requestCookWakeLock();
+      attachShakeListenerIfEnabled();
+      updateShakeToggleUI();
       renderCookScreen();
     } catch (err) {
       // A safety net, not just for scaling — if anything about this
@@ -5612,7 +5723,13 @@ ${rawSteps}`;
     const tipEl = document.getElementById("cook-tip");
     const timerWrap = document.getElementById("cook-timer-wrap");
 
-    if (screen.type === "intro" || screen.type === "part-intro") {
+    if (screen.type === "intro-instructions") {
+      document.getElementById("cook-step-text").textContent = screen.speakParts.slice(1).join(" ");
+      ingredientListEl.style.display = "none";
+      tipEl.style.display = "none";
+      timerWrap.style.display = "none";
+      localStorage.setItem("neumify_cook_intro_seen", "true");
+    } else if (screen.type === "intro" || screen.type === "part-intro") {
       document.getElementById("cook-step-text").textContent = screen.heading;
       ingredientListEl.style.display = "block";
       ingredientListEl.innerHTML = screen.ingredients.map((i) => `<li>${escapeHtml(i)}</li>`).join("");
@@ -5631,6 +5748,7 @@ ${rawSteps}`;
     }
     if (screen.speakParts) speakSequence(screen.speakParts);
     else speak(screen.speakText);
+    document.getElementById("cook-tap-hint").style.display = screen.timerSeconds ? "none" : "block";
   }
 
   function cookNext() {
@@ -5642,6 +5760,7 @@ ${rawSteps}`;
     stopCookTimer();
     stopLunaListening();
     releaseCookWakeLock();
+    detachShakeListener();
     speechToken++;
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     document.getElementById("cook-shell-wrap").style.display = "none";
@@ -5650,6 +5769,19 @@ ${rawSteps}`;
     currentCookRecipe = null;
   }
   document.getElementById("cook-back-btn").addEventListener("click", closeCookMode);
+
+  // ---- Tap anywhere to advance — for dirty hands. Deliberately switched
+  // off while a timer is running: a tap could mean "next step" or "I want
+  // to adjust the timer," and there's no way to tell which — and someone
+  // waiting on a timer has time to clean up their hands anyway, so the
+  // dirty-hands problem this solves doesn't apply during a timer. Only
+  // fires on a direct tap on the background text areas, never on an
+  // actual button, as a safety net.
+  document.getElementById("cook-body").addEventListener("click", (e) => {
+    if (cookTimerInterval) return; // a timer is active for the current step
+    if (e.target.closest("button")) return;
+    cookNext();
+  });
   document.getElementById("cook-next-btn").addEventListener("click", cookNext);
   document.getElementById("cook-prev-btn").addEventListener("click", cookPrev);
 
@@ -5694,10 +5826,17 @@ ${rawSteps}`;
   let cookTimerRemaining = 0;
   let cookTimerTotal = 0;
   let cookTimerPaused = false;
+  const COOK_TIMER_RING_CIRCUMFERENCE = 326.7;
   function updateCookTimerDisplay(seconds) {
     const clamped = Math.max(0, seconds);
     const m = Math.floor(clamped / 60), s = clamped % 60;
     document.getElementById("cook-timer-display").textContent = `${m}:${String(s).padStart(2, "0")}`;
+    const ring = document.getElementById("cook-timer-ring-fg");
+    if (ring && cookTimerTotal > 0) {
+      const fraction = Math.max(0, Math.min(1, clamped / cookTimerTotal));
+      ring.style.strokeDashoffset = String(COOK_TIMER_RING_CIRCUMFERENCE * (1 - fraction));
+      ring.classList.toggle("almost-done", fraction < 0.15);
+    }
   }
   function stopCookTimer() {
     if (cookTimerInterval) { clearInterval(cookTimerInterval); cookTimerInterval = null; }

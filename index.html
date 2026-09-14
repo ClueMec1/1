@@ -5304,6 +5304,7 @@ ${rawSteps}`;
     lunaAwaitingCommand = false;
     if (lunaAwaitingCommandTimer) clearTimeout(lunaAwaitingCommandTimer);
     if (lunaRecognition) { try { lunaRecognition.stop(); } catch (e) {} lunaRecognition = null; }
+    if (lunaAudioContext) { try { lunaAudioContext.close(); } catch (e) {} lunaAudioContext = null; }
     const el = document.getElementById("luna-indicator");
     if (el) el.classList.remove("on");
   }
@@ -5370,10 +5371,19 @@ ${rawSteps}`;
   }
   // A short, quiet tone confirming "I heard you" — generated on the fly
   // with the Web Audio API, no sound file needed.
+  // A single, reused AudioContext for the whole Luna session — creating a
+  // brand new one on every chime (as this used to do) means re-negotiating
+  // the device's audio session each time, which on a phone (where mic and
+  // speaker share one tightly-managed audio session, unlike a computer)
+  // can interrupt the microphone's own capture right at the moment a
+  // command needs to be heard. Reusing one context avoids that churn.
+  let lunaAudioContext = null;
   function playLunaChime() {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      const ctx = new AudioCtx();
+      if (!lunaAudioContext) lunaAudioContext = new AudioCtx();
+      if (lunaAudioContext.state === "suspended") lunaAudioContext.resume();
+      const ctx = lunaAudioContext;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
@@ -5528,6 +5538,32 @@ ${rawSteps}`;
     return seq;
   }
 
+  // ---- Keep the screen awake while actively cooking — the Screen Wake
+  // Lock API. Requested when Cook Mode opens, released when it closes.
+  // Per spec, the browser releases the lock automatically if the tab is
+  // backgrounded (switching apps, locking the phone), and does NOT
+  // silently re-acquire it on its own when you come back — so it's also
+  // re-requested on visibilitychange while still in Cook Mode. Needs a
+  // modern browser (Chrome/Edge, Android Chrome, Safari 16.4+); on an
+  // older one this silently does nothing and Cook Mode works exactly as
+  // before — the screen may just fall asleep on its own timing again.
+  let cookWakeLock = null;
+  async function requestCookWakeLock() {
+    if (!("wakeLock" in navigator)) return;
+    try {
+      cookWakeLock = await navigator.wakeLock.request("screen");
+    } catch (e) { /* not supported, denied, or battery saver blocking it — Cook Mode still works fine without it */ }
+  }
+  function releaseCookWakeLock() {
+    if (cookWakeLock) { try { cookWakeLock.release(); } catch (e) {} cookWakeLock = null; }
+  }
+  document.addEventListener("visibilitychange", () => {
+    const cookModeOpen = document.getElementById("cook-shell-wrap").style.display !== "none";
+    if (document.visibilityState === "visible" && cookModeOpen && !cookWakeLock) {
+      requestCookWakeLock();
+    }
+  });
+
   function startCookMode(recipe, scaleFactor) {
     try {
       currentCookRecipe = recipe;
@@ -5538,6 +5574,7 @@ ${rawSteps}`;
       document.getElementById("cook-shell-wrap").style.display = "flex";
       warmUpSpeechEngine();
       startLunaListening();
+      requestCookWakeLock();
       renderCookScreen();
     } catch (err) {
       // A safety net, not just for scaling — if anything about this
@@ -5604,6 +5641,7 @@ ${rawSteps}`;
   function closeCookMode() {
     stopCookTimer();
     stopLunaListening();
+    releaseCookWakeLock();
     speechToken++;
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     document.getElementById("cook-shell-wrap").style.display = "none";

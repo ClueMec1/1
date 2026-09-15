@@ -1,4 +1,4 @@
-[README (1).md](https://github.com/user-attachments/files/32177320/README.1.md)
+[README (1).md](https://github.com/user-attachments/files/32264362/README.1.md)
 # Neumify
 
 A family-only PWA: an open, categorized photo/video/music feed, a
@@ -55,7 +55,170 @@ Fixed with a simple guard: the navigation logic now only runs on the
 live exactly as before — only the destructive re-navigation was the
 problem.
 
+## Important: a third real bug just got fixed — re-registering was silently resetting people
+
+Member records are keyed by phone number, and the registration form
+used to `setDoc(..., { merge: true })` with every field, including
+`status` and `isHost`, every single time someone submitted it — with
+no check for whether an account already existed there. That meant
+anyone who cleared their browser, switched devices, or reinstalled
+and had to fill out the name/phone form again would silently get
+**their approved status reset to pending, their host status reset to
+false, and their original join date overwritten** — even though they
+were already a known, approved member.
+
+Fixed properly: registering now checks for an existing account at
+that phone number first. If one exists and the name matches, it just
+signs back into that same account — no re-approval, no lost host
+status, no reset join date. If the phone matches but the name
+doesn't (a shared household number, most likely), it asks for
+confirmation before signing in as the existing name, rather than
+silently either overwriting someone's account or refusing outright.
+
+## Switching between accounts on one shared device
+
+The "switch user" button in the top bar used to just wipe the
+current sign-in and dump you on a blank registration form — meaning
+switching back to whoever it was a minute ago meant retyping their
+name and phone number from scratch every time.
+
+It now remembers every account that's successfully signed in on that
+specific device (name, photo, up to the 8 most recent) and offers
+them as a tap-to-switch list — no retyping. **"+ Add another
+account"** goes to a normal blank registration, for a second family
+member — a kid, say — signing in on the same shared tablet or phone
+for the first time; their account joins the remembered list too the
+moment they're approved, right alongside whoever was already using
+that device. Any remembered account can be removed from the list
+with the ✕ next to it, for a device that shouldn't keep remembering
+someone (a family computer at a grandparent's house, say) — that
+only forgets it locally on that device; the account itself, and
+everything in it, is untouched.
+
+This is stored per-device in `localStorage`, not synced anywhere —
+it's purely "which accounts has this specific browser seen before,"
+using the same no-password, approval-based trust model the rest of
+this app already runs on rather than adding a new one.
+
+## Important: a fourth real bug just got fixed — this is likely why updates reached the computer but not the phone
+
+The service worker's `fetch` handler was serving the app shell
+(`index.html` itself) **cache-first** — meaning once a device had a
+version cached, it would keep serving that exact cached copy
+indefinitely, and only had a chance to update when a brand-new
+service worker fully installed, activated, and reloaded the page.
+That whole chain depends on the browser noticing `sw.js` changed and
+running its update cycle promptly — and that cycle is well known to
+be sluggish or inconsistent specifically for **iOS home-screen
+PWAs** (an "installed" standalone app on iPhone/iPad doesn't check
+for service worker updates nearly as eagerly as a normal browser tab
+does). A desktop browser tab, checking more readily, would pull the
+new version while a phone sat on an old cached one indefinitely —
+exactly the split reported.
+
+Fixed at the actual source: the app shell is now fetched
+**network-first**, falling back to the cache only if the network
+genuinely fails (offline). Every load now tries to get the newest
+version directly, rather than the newest version being something
+that depends on a background update cycle completing correctly on
+every individual device. Firestore, Storage, the Gemini API, Hebcal,
+GIPHY, chess.js's CDN, uploaded media, and every embedded game are
+untouched by any of this — they were never cached and still aren't;
+this only ever affected `index.html` and `manifest.json`.
+
+**One more one-time step, same as before:** this fix has to reach a
+device before it can help that device — a phone stuck on an old
+cached version needs to successfully load *this* update once, the
+same way as the original service-worker-registration fix earlier.
+Removing and re-adding the home screen icon (or opening the plain
+URL in the browser and hard-refreshing once) is still the most
+reliable way to force that. After this specific update lands,
+everything from here on should update the same way on phone as it
+already does on computer.
+
+## Important: a fifth real bug just got fixed — "Start cooking" could silently fail
+
+`scaleIngredientText` (the serving-size math) called `.match()` on
+each ingredient with no check that it was actually a string — if any
+ingredient in a recipe wasn't a clean string for any reason, this
+threw an error with nothing catching it. Since that happened inside
+`startCookMode`, *before* the line that actually shows the Cook Mode
+screen, the visible symptom was exactly what got reported: pick a
+serving size, the dialog closes, and you're just back on the Recipes
+list with no explanation at all.
+
+The first fix added a safety net around it — but a safety net that
+only shows a generic "something went wrong" message, with the actual
+error swallowed and never seen, isn't a real fix, just a nicer-looking
+symptom. That generic message showed up again, which confirmed
+something was still throwing further in.
+
+**Fixed properly this time**, all the way through `buildCookSequence`:
+every piece of a recipe's data (`parts`, each part's `ingredients` and
+`steps`, each step's `text`) is now explicitly checked to actually be
+the type it's supposed to be before anything is done with it, falling
+back to sensible empty defaults rather than assuming the data is
+always shaped correctly. Tested directly against six different kinds
+of deliberately broken recipe data (missing parts, `parts` not even
+being an array, `null` ingredients, steps with no text, mixed-in
+`undefined`/numbers where strings were expected) — all six now build
+a working Cook Mode sequence instead of throwing. On top of that,
+`startCookMode` now: logs the *real* error to the browser console if
+anything still goes wrong (open dev tools to see it, rather than
+only ever seeing a generic message), automatically retries without
+scaling first if scaling was involved (so a scaling issue specifically
+never blocks cooking a recipe outright), and only shows the
+plain-language alert as the last resort, with the actual error
+message included in it.
+
+That error-message logging is exactly what surfaced the *next* bug
+immediately: `currentCookRecipe is not defined`. Its `let
+currentCookRecipe = null;` declaration had been dropped somewhere
+across the many recent edits to this area — it was still being
+*used* in four places, just never declared. Since this app runs as
+an ES module (always strict mode), assigning to an undeclared
+variable throws immediately rather than silently creating a global,
+which is exactly what happened. Restored, and — since this is the
+second time a declaration has gone missing this way in this
+project's history — the whole file was swept afterward with a script
+checking every variable used in an assignment against every `let`/
+`const`/`function`/`import` declaration in the file, to check for any
+other lurking instances of the same thing. Several false positives
+turned up (HTML/SVG attributes and API query-string parameters
+inside template literals look like assignments to a simple regex but
+aren't real code, and a few genuine variables declared on a shared
+comma-separated line like `let a, b, c;` weren't caught by the
+sweep's own pattern) — every one of those was checked by hand and
+confirmed to actually be declared correctly. `currentCookRecipe` was
+the only real instance found.
+
 ## Why one file right now (and what changes later)
+
+## Bottom nav redesigned — two capsules, and hidden outside Feed
+
+With ten-plus tabs now (Feed, Today, Chat, Calls, Torah, Family Tree,
+Games, Calendar, Recipes, AI, and Host for the host), the single-row
+phone nav had grown into a horizontally-scrolling strip — and a
+scroll hint most people never notice means most people never
+discovered everything past what fit on the first screen.
+
+**Two rows instead of one scrolling row** — both visible at once, no
+sliding required to see the rest of them. Five tabs on top, the rest
+below, each its own separate rounded capsule rather than one long bar.
+
+**Outside of Feed, the nav disappears entirely on a phone** — every
+other screen gets the full display instead of sharing it with a nav
+bar that's now taller than before. A back arrow appears in the top
+bar as the only way home, returning to Feed, where the nav reappears
+to pick somewhere else to go. This is a deliberate hub-and-spoke
+design: Feed is home base, everything else is a full-screen visit you
+explicitly return from — exactly so the taller two-row nav doesn't
+end up eating more of the screen than the single row it replaced.
+
+**Desktop is untouched** — the sidebar never had the scrolling
+problem this solves (it has the vertical room for every tab already),
+so it stays permanently visible regardless of which tab is open, the
+same as before.
 
 ## Visual theme — gradient background, glass nav, no layout changes
 
@@ -183,12 +346,13 @@ was already organized.
 
 ### Cook for however many you actually need
 
-Recipes now have a **servings** field (set when adding or editing
-one — defaults to 4). Every time you start Cook Mode, it asks how
-many servings you want *that time*, pre-filled with the recipe's
-normal amount — say 8 instead of 4 and every ingredient quantity
-doubles automatically, so there's no mental math and nothing to
-remember for next time either, since it asks fresh every time.
+Recipes now **require** a servings field when adding or editing one —
+how many people the recipe as written actually serves. Every time you
+start Cook Mode, it tells you that number and asks how many you want
+*this time*, pre-filled with the recipe's normal amount — say 8
+instead of 4 and every ingredient quantity doubles automatically, so
+there's no mental math and nothing to remember for next time either,
+since it asks fresh every time.
 
 This is scoped to the **ingredients list only** — step instructions
 are left exactly as written. A step might mention a temperature, a
@@ -200,68 +364,150 @@ and fractions ("1/2", "1 1/2") and renders common fractions back as
 symbols (¼ ½ ¾ ⅓ ⅔); an ingredient with no leading number (like "a
 pinch of salt") is simply left as-is.
 
-### Luna — a wake-word voice assistant for hands-busy cooking
+### Two more ways through a recipe when your hands are a mess
 
-Cook Mode now listens for **"Luna"** and does nothing else until it
-hears it — that's deliberate, and solves a real problem: a system
-that reacts to *everything* said nearby picks up ordinary kitchen
-conversation and misfires constantly. Luna only ever acts on what
-comes right after her name.
+**Tap anywhere on the screen to move to the next step.** No need to
+aim for the arrow button with a floury finger. This turns off
+automatically whenever a timer is running on the current step — a tap
+during a timer is genuinely ambiguous (next step? adjust the timer?
+there's no way to know which was meant), and someone waiting on a
+timer has a natural window to go wash their hands anyway, so the
+problem this solves doesn't apply there. A small "👆 Tap anywhere to
+go to the next step" hint shows only when it's actually active.
 
-**The wake word is forgiving on purpose, without being noisy.** It
-matches "Luna" exactly, a short list of known mishearings ("tuna,"
-"loona," "lunar"), and anything within one letter-edit of "luna" —
-enough that saying it quickly still works. It deliberately does
-*not* go looser than that: a wider fuzzy match was tested and found
-to falsely trigger on ordinary words like "Linda" or "Lane," which
-would recreate the exact noise problem this feature exists to solve.
+**Shake to advance — entirely optional**, a 📳 toggle in Cook Mode's
+header, off by default. Turn it on and a real shake of the phone or
+tablet moves to the next step, no touching the screen at all. Turning
+it on requires a permission prompt on iPhone/iPad specifically (Apple
+requires that prompt to come from a direct tap, which is exactly what
+tapping the toggle provides) — declining it just means shake stays
+off, everything else keeps working. The preference is remembered
+across sessions; the actual motion listener is only ever active while
+Cook Mode is open, so it isn't running in the background the rest of
+the time.
 
-**What you can say**, right after "Luna": **next** / **okay** (also
-"continue," "go on," "got it") to advance, **back** to return to the
-previous step, **pause** and **resume** for the timer, **start
-over** to restart the timer from its full duration, **add** or
-**remove** any number of minutes ("Luna add seven minutes," "Luna
-remove two minutes" — not limited to round numbers), **say that
-again** (also "where was I," "repeat that") to re-hear whatever was
-just said, and **I have a question, [anything]** to ask the AI a
-real question about the recipe — it answers using the recipe's
-ingredients and your current step as context, spoken back in 1-2
-sentences. A tap on the small "Luna" pill in the header shows the
-full list any time.
+### A redesigned timer, and a one-time guide to the controls
 
-**The honest limitation:** this needs the browser's speech
-recognition, which is reliably supported on Chrome, Edge, and
-Android, but genuinely inconsistent on Safari for iPhone and iPad —
-real-world reports describe it as unreliable there, especially for
-continuous "always listening" use, and it may not work at all
-depending on iOS version. This is feature-detected: on a device where
-it's not well supported, Luna's indicator simply never turns on, and
-every other part of Cook Mode (the buttons, the spoken steps) works
-exactly the same either way.
+The timer now has a circular progress ring around the digits (turning
+pink in the last 15%) instead of just numbers, and the adjustment
+buttons — −1 min, −10 sec, +10 sec, +1 min — are now icon-forward
+circular buttons matching the rest of Cook Mode's visual language
+instead of plain text pills.
 
-One more integrity detail: Luna's microphone is explicitly paused
-for the duration of every spoken response and resumed right after —
-without that, she could hear her own voice reading a step and
-misinterpret it as a command.
+The very first time you cook anything on a given device, Cook Mode
+opens with a **quick spoken guide to the controls** — tap anywhere,
+say "Luna," the Ask-a-question button — before it gets to the
+ingredients. It only plays once ever (tracked per device); after
+that, straight to the ingredients like normal.
 
-### Starting to talk faster
+### Two arrows, real timer controls, and Luna is back — with a safety switch this time
 
-Steps used to have a noticeable pause between appearing on screen and
-starting to speak. **True pre-recorded audio isn't possible** with
-the free, built-in speech engine this app uses — that would need a
-paid text-to-speech API generating and hosting audio files ahead of
-time, which is a different scale of thing entirely. What *is* done:
-the speech engine is "warmed up" — its voice list loaded and a
-silent utterance spoken — the moment Cook Mode opens, which is where
-most of that delay actually lived, rather than in anything about the
-step text itself.
+- **Two arrow buttons** — left goes back a step, right goes forward
+  (a checkmark on the very last step instead of an arrow, to show
+  it'll finish). That's the entire button-based navigation,
+  deliberately simple.
+- **A bigger timer display**, with real controls underneath it:
+  **Pause/Resume** (one button that toggles), and four adjustment
+  buttons — **−1:00**, **−0:10**, **+0:10**, **+1:00** — each one a
+  plain, repeatable tap (tap +1:00 twice, it's +2 minutes; no hidden
+  double-tap gesture to learn, just normal buttons doing what they say).
+- **"❓ Ask a question" is a button**, not a voice command — tap it,
+  type anything about the recipe, and the AI answers using the
+  recipe's ingredients and your current step as context, spoken back
+  as well as shown as text.
 
-Cook Mode's controls are **Back/Next buttons, plus Luna's voice
-commands where supported** — each screen (ingredients, part intros,
-individual steps) is still read aloud automatically via
-`speechSynthesis` the moment it appears, and a step with a timer
-shows a **Start timer** button with a live countdown alongside
-whatever Luna can now also do to it.
+**Luna, the wake-word voice assistant, is back** — the same version
+as before (instant chime feedback the moment she hears her name,
+using the recognizer's in-progress transcript rather than waiting for
+a full sentence; saying "Luna" alone and then the command as a
+separate follow-up both work). She still does nothing until she
+hears "Luna" specifically — not the end of a step, not a quiet
+moment, not anything else. Voice commands: next/okay, back,
+pause/resume, start over, and add or remove any number of minutes.
+
+**A host-controlled safety switch, specifically for this:** Host →
+Integrations now has a simple on/off toggle just for Luna, separate
+from the Recipes tab itself — given how much back-and-forth this
+particular feature has already had, this means it can be switched
+off for the whole family without needing another round of code
+changes if it's ever unreliable again. Flipping it takes effect
+immediately, even mid-cook.
+
+**The mic constantly restarting, making noise and visibly blinking
+during normal use — found and fixed.** The actual cause: recipe steps
+get read aloud automatically on every step change, and Luna's
+microphone was being **fully stopped and restarted** around every
+single one of those read-outs, to stop her hearing her own voice. In
+a real cooking session with many steps, that's dozens of full mic
+stop/restarts, not an occasional glitch — which is exactly the
+pattern reported (noise, notification-like sounds, the mic indicator
+blinking on and off). Rather than trying to make those restarts
+faster, the fix removes the need for them: the microphone now stays
+running continuously through Luna's own speech, and a simple flag
+tells her to ignore anything picked up while she's talking, instead
+of physically stopping and restarting the hardware to achieve the
+same result. The mic now only restarts when the *browser itself*
+periodically ends a long-running session — a real limitation of the
+underlying Web Speech API that can't be removed, but is far less
+frequent than "every time a step is read aloud."
+
+A cloud speech API (Google, Azure, etc.) was raised as an
+alternative — worth being upfront about the actual tradeoff there:
+that would mean a paid, metered service *and* a backend server just
+to keep the API key from being visible in this app's page source
+(this app has no backend at all right now, by design, to stay free
+and simple to host). Since the specific cause here was findable and
+fixable without any of that, this fix was tried first rather than
+reaching for a bigger, costlier tool. If real testing shows it's
+still not reliable enough, a cloud API remains a legitimate next
+step — but it's a deliberate cost and complexity tradeoff worth
+deciding on directly, not a default move.
+
+**Chime plays on phone, but the command after it isn't heard —
+found a likely cause specific to phones.** Every chime was creating a
+**brand new `AudioContext`** from scratch. A phone manages the
+microphone and speaker as one shared, tightly-controlled audio
+session — far more strictly than a computer does — so creating a new
+audio context right at the moment the mic needs to keep listening for
+the command can interrupt that capture, even though nothing in this
+app's own code ever told it to stop. That lines up with what was
+reported: the chime proves "Luna" was heard, and the very next moment
+— exactly when the command needs to be captured — is exactly where
+this kind of interruption would land. Fixed by reusing a single,
+persistent `AudioContext` for the whole session instead of creating a
+new one on every chime (properly closed when Luna stops, so it
+doesn't linger between cooking sessions). This is a real, testable
+hypothesis rather than a guaranteed fix — genuine phone testing will
+tell whether this was the actual cause or whether something else
+(device-specific mic sensitivity, background noise from being held
+closer to a face, etc.) is also involved.
+
+**Speech pre-warming now starts even earlier** — the moment the
+serving-size dialog opens, not only once Cook Mode itself does. That
+dialog is "free" time from a latency standpoint (you're already
+looking at it, choosing a number), so the engine gets that whole
+window as a head start before its first real sentence is needed.
+
+A genuinely clever idea came up for going further: use an actual
+**pre-recorded** audio clip for the very first thing said (which has
+no engine-startup delay at all, since it's just a sound file playing)
+and use its few seconds of runtime to let the slower text-to-speech
+engine warm up in the background, so by the time the *real* speech is
+needed, it's instant. The idea itself is sound — it's a legitimate,
+well-known technique. What's not possible is the "pre-recorded" part
+literally: this app's speech comes from the browser's built-in engine,
+which has no way to render its own voice out to a saved audio file —
+only to play live through the speakers in the moment. Producing an
+actual recording would mean a paid text-to-speech API that generates
+and hosts real audio files, which is the same kind of cost-and-backend
+tradeoff as the cloud speech-recognition question earlier in this
+file — a deliberate step up, not a default one.
+
+So what's actually here is the closest honest version of the same
+idea using only what's free: warming the engine up as early as
+possible (the serving dialog, now, instead of only Cook Mode itself)
+so that by the time the **first spoken thing — a quick one-time guide
+to the controls** — plays, the delay should be minimal to begin with.
 
 **Editing a recipe** (the recipe's author, or the host) shows the
 **AI-organized version**, not your original raw paste — the
@@ -284,6 +530,61 @@ AI. Two different kinds of "memory," deliberately:
 - **Family facts** (below) are the opposite: permanent, shared, and
   known to the AI from the very first message of every new
   conversation, for everyone.
+
+### Three things now share one knowledge base — Family AI, Family Tree, and per-chat "Ask AI"
+
+The Family AI tab, the Family Tree, and the "🤖 Ask AI" button inside
+every chat room all draw from the same underlying facts and family
+tree data now — asking any of the three about something covered by
+the other two works, since they're reading from the same place.
+
+**Facts now save themselves during an actual conversation with the
+AI, without anyone filling out a form.** Tell it something durable —
+"the Hanukkah party is at Goldie's house," "Grandma's birthday is
+June 3rd" — and it recognizes that as worth remembering and saves it
+on its own; ask it "what's up" and nothing gets saved, because
+nothing durable was said. Under the hood, the AI is instructed to
+tack on a hidden marker line at the end of its reply whenever
+something's worth keeping, which gets quietly extracted and saved to
+the shared facts, then stripped back out before you ever see it — so
+what you actually read is just its normal, natural reply.
+
+**The per-chat "Ask AI" button works the other way on purpose.** It
+reads the last 30 messages of whichever chat you're in *only* to
+answer the question in front of it, and knows the same shared facts
+and family tree while doing so — but nothing from that chat is ever
+saved anywhere. A casual conversation between family members should
+never silently turn into a permanent fact; only an actual, direct
+conversation with the AI itself does that.
+
+**Manually adding or removing a general family fact is now
+host-only** — the "Family facts" button only shows up for the host.
+**"My facts" is the opposite — open to everyone, for facts about
+themselves specifically.** Personal preferences, allergies, anything
+worth the family AI knowing about *you* — "I don't like tuna," say —
+without it being lumped into general family-wide facts or requiring
+the host to add it on your behalf. Everyone manages their own list;
+nobody edits someone else's.
+
+The AI is told plainly who it's currently talking to, so when
+chatting with it directly and you say something clearly about
+yourself, it recognizes that as personal rather than general and
+saves it under your name automatically — using the exact same hidden
+end-of-reply marker mechanism as the family-wide facts, just a
+second, distinct marker for anything personal. Say "the Hanukkah
+party is at Goldie's" and it becomes a general family fact everyone's
+AI conversations know; say "I don't like tuna" and it becomes a
+personal fact specifically about you. **Personal facts aren't
+private, though** — they're organized by who they're about, but
+visible to the whole family's AI conversations (the per-chat "Ask AI"
+button included), the same as the family tree already is, since the
+point is the family AI actually knowing useful things about each
+person, not a hidden diary only that person's own conversations can see.
+
+Every auto-saved fact — family-wide or personal — still shows up in
+its respective list, clearly marked "(auto-saved from AI chat)" so
+it's easy to tell apart from anything added by hand, and remove
+anything that shouldn't have been saved.
 
 ### Three providers per feature, tried in order — and each feature has its own separate keys
 
@@ -422,6 +723,25 @@ swapping means changing that one function, not touching Feed or Chat.
 
 ## More WhatsApp-style chat behavior
 
+**Every chat room now has a 🤖 Ask AI button** in its header. Tap it
+and either ask a specific question, or leave it blank and it looks at
+the last 30 messages of that conversation itself and offers whatever
+seems genuinely useful — a summary, a suggested reply, anything. It
+reuses the same AI setup as everywhere else in the app (Host →
+Integrations → AI keys), and the conversation context never leaves
+that one request — nothing is stored or logged from it.
+
+**The message box was redesigned** — photo, camera, video, GIF, voice,
+and send used to all share one row with the text field, which left
+the field so narrow you could only see the first few characters of
+whatever you'd typed. Now the five attachment/action buttons sit on
+their own row above, and the text field gets its own full-width row
+below with nothing competing for its space. The voice-recording
+overlay (the screen that replaces the message box while you're
+holding the mic button) was resized to match the new taller message
+box too, so it fully covers it instead of leaving the button row
+peeking out above it.
+
 - **Typing indicators** — appear under the message list within ~3
   seconds of the other person typing, and clear automatically if they
   stop or send.
@@ -496,12 +816,44 @@ then on, you'll get a native notification for:
 - A new Feed post from someone else, if you're not currently on the
   Feed tab
 
-**The honest limit:** this only works while the app is open — a
-background tab, a backgrounded phone PWA, that all still counts as
-"open" and still works. A *fully closed* app (force-quit, or never
-opened since restart) won't notify you, because nothing is running to
-notice the new data. That's the real trade-off of staying
-server-free.
+**A real bug just got fixed here, and it's worth explaining plainly.**
+This used to create notifications with the page-level `new
+Notification(...)` constructor. Per MDN's own documentation, **that
+constructor throws an error outright on nearly all mobile
+browsers** — it was never just unreliable there, it flatly didn't
+work, full stop. That error was being caught by a try/catch and
+silently discarded, so on a phone, not one notification was ever
+actually being created — not muted, not delayed to the background,
+simply never made in the first place. That's very likely the entire
+explanation for "no sound, even when the app is open in the
+background."
+
+Fixed by switching to `ServiceWorkerRegistration.showNotification()`
+— the documented, correct way to show a notification on mobile,
+going through the service worker rather than the page directly —
+with the old approach kept only as a fallback for the rare case the
+service worker isn't ready yet. A vibration pattern was added too,
+and tapping a notification now actually brings the app to focus
+(opening it fresh if it wasn't open at all) instead of just
+disappearing with nothing happening.
+
+**What's still a real, unavoidable limit, even after this fix:**
+there's no option in the web Notification API to specify a *custom*
+sound file — whether any sound plays, and which one, is entirely up
+to the device's own notification settings (silent mode, Do Not
+Disturb, per-app sound settings), the same as it is for genuinely
+every app on the phone, not just this one. What this fix controls is
+whether a notification is created at all; whether it makes noise was
+never something a website could control directly, on any platform.
+
+And the bigger-picture limit from before still stands: this only
+works while the app is open somewhere — a background tab, a
+backgrounded phone PWA, that counts as open and now should
+genuinely work. A *fully closed* app (force-quit, or never opened
+since a restart) still won't notify you, because nothing is running
+to notice the new data — that's the real trade-off of staying
+server-free, and no fix to *how* a notification is shown changes
+that part.
 
 ## Daily Question — a reason to open the app every evening
 
@@ -538,7 +890,31 @@ Question room — not a whole onboarding system, just a rotating tip,
 in keeping with the spirit of gently pulling people deeper into the
 app without being pushy about it.
 
+## The screen stays awake while actively cooking
+
+Cook Mode now requests the device's screen to stay on for as long as
+it's open, using the browser's Screen Wake Lock API — no more
+grabbing a floury phone to tap it awake mid-recipe. It's requested
+the moment Cook Mode opens and released the moment it closes.
+
+One real quirk of this API, handled here: the browser releases the
+lock automatically the moment the tab is backgrounded (switching
+apps, the phone auto-locking) and does **not** silently reacquire it
+on its own when you come back — so it's also re-requested whenever
+the tab becomes visible again while Cook Mode is still open, in case
+that happened.
+
+**Browser support**: Chrome, Edge, and Android Chrome support this
+well; Safari added it in iOS 16.4, so it needs a reasonably current
+iPhone/iPad. On an older or unsupported browser, this fails silently
+and Cook Mode works exactly as it always has — the screen may just
+fall asleep on its own normal timing, same as before this existed.
+
 ## Games & points
+
+**Everyone can see where everyone stands** — a collapsible leaderboard
+sits right above the games list, sorted highest to lowest, with medals
+for the top three and "(you)" next to your own name.
 
 A **Games** tab in the nav (bottom pill on phones, sidebar on
 desktop) with three mini-games, none requiring any outside knowledge
@@ -548,6 +924,147 @@ took), **Connect Four** (15 points for a win) with a bot that takes a
 winning move when available, blocks yours when it has to, and
 otherwise favors the center columns, and **Checkers** (20 points for
 a win) with a bot that prefers captures when one's available.
+
+### Two more games, both fully original
+
+Two zip files of real GitHub game-jam projects came in later, asking
+for them to be added. Checking their licenses first (see further down
+this file for the full story) turned up an explicit "all rights
+reserved, distribution only to js13kgames.com" on one and no license
+at all on the other — so neither was added. What got built instead,
+on request, was **original games in the same spirit**, written from
+scratch:
+
+**🕹️ Neon Pinball** — a real physics pinball table, not a scripted
+imitation of one. The flippers are proper rotating arms: each frame,
+the closest point on the flipper's current line segment to the ball
+is found, and if the ball is close enough, it gets pushed out along
+that contact normal *and* given an extra push in the direction the
+flipper is currently swinging, scaled by how fast it's rotating at
+the moment of contact — the same underlying idea real pinball physics
+engines use, simplified down to something reliable at 60fps in a
+plain canvas. Five bumpers, funnel walls guiding the ball toward the
+flippers, a hold-to-charge launcher, three balls, and a combo
+multiplier (up to ×5) for hitting bumpers in quick succession. All
+sound effects are generated on the fly with the Web Audio API —
+no sound files, nothing borrowed. Final score becomes points at a
+capped rate.
+
+**🌀 Orbit Snake** — classic grid-based snake, rendered in 3D. Drag
+anywhere on the board to orbit the camera around it (it also rotates
+slowly on its own when you're not dragging), the snake's body is a
+moving rainbow gradient, and eating food triggers a small particle
+burst. Same wall/self-collision rules as ordinary snake, with the
+pace gently increasing as the score climbs. Nipple.js joystick
+included, same as the other 3D games here.
+
+Both were tested piece by piece before being wired in — the
+collision math (closest-point-on-segment, wall/self collision
+detection, grid-to-world coordinate mapping) was run against known
+cases in isolation first, separately from the visual/canvas code, the
+same way the rest of this app's trickier logic has been throughout.
+
+### On removing the GameZipper games, and why nine GitHub repos weren't added in their place
+
+The 20 external GameZipper games (Tetris, Pong, Solitaire, and so on)
+that used to fill out this tab have been **removed entirely** — every
+tile, the whole external-games list, the "claim points for playing"
+button system, all of it.
+
+A later request asked for those to be replaced with code pulled
+directly from nine specific GitHub repositories (driving sandboxes,
+an open-world game, an endless runner, and so on), converted into
+native components. That request ran into three real, checked
+constraints rather than just difficulty:
+
+- **Several of these repos aren't portable single-file games at
+  all.** `MankyDanky/web-racing`, checked directly, is a *multiplayer*
+  game requiring WebRTC peer-to-peer connections plus a **Django
+  backend server** for matchmaking and party codes — there's no
+  server here to deploy that to, and "extracting it into a native
+  component" isn't meaningful without one.
+- **This app's own build sandbox has no network access** — confirmed
+  in its own configuration, not a guess. That means no `git clone`,
+  no bulk-downloading a repo's binary assets (3D models, textures,
+  sound files), which every one of these nine games depends on. Only
+  individual web pages can be viewed, one at a time, through search
+  and fetch tools — not a whole repository's file tree.
+- **Licensing** — reproducing substantial source code from someone
+  else's repository requires checking its license first. Several
+  comparable hobby game projects turned up while checking these had
+  no license file at all, which by default means "all rights
+  reserved," not "free to copy."
+
+So that specific ask wasn't fulfilled as literally requested, and
+that was said plainly rather than attempting a shortcut version that
+would have shipped broken (missing assets, broken relative imports,
+or actually infringing someone's copyright).
+
+**What *was* achievable, and got built:** real `nipple.js` virtual
+joystick controls (a genuine, MIT-licensed, verified library) added
+to the three 3D games this app already owns the full source for —
+Platform Runner, Cosmic Jet Simulator, and the Racing game (see the
+base64-embedded games section further up). Runner and Racing re-fire
+their existing lane-shift movement functions on a short cooldown
+while the joystick is held in a direction; the Jet game applies
+continuous analog adjustment every frame instead, since flight
+genuinely benefits from smoother control than a lane-based runner or
+racer does. All three keep working with their original on-screen
+buttons too — the joystick is an addition, not a replacement.
+
+Each of the three also got an explicit `cancelAnimationFrame` +
+WebGL `renderer.dispose()` call on `pagehide`, worth being honest
+about: the browser already tears down a removed iframe's entire
+execution context automatically the moment it's removed from the
+page, so this isn't fixing a pre-existing leak — it's cheap extra
+insurance specifically against WebGL context buildup from opening
+and closing the same game many times in one session without a full
+page reload in between.
+
+Their scoring was already wired into this app's real points system
+(`awardPoints()`, called through the same `postMessage` bridge used
+by every base64-embedded game here) before any of this — that part
+didn't need to change.
+
+### Why two uploaded game projects weren't added
+
+Two zip files — real, working js13k game-jam entries ("Technicolor
+Tilt," a pinball boss-rush, and "Lossst — A Snake in Space," a 3D
+snake puzzle game) — were uploaded with a request to add them here.
+Both were opened and checked directly before doing anything with
+them, and neither was added:
+
+- **Lossst's own `LICENSE.md` states, verbatim**: *"all rights served
+  to the copyright holder / distribution rights granted to
+  js13kgames.com."* Its README repeats it: *"All rights reserved /
+  Distribution only allowed to js13kGames.com."* That's about as
+  direct a restriction as a license can state, and this app is not
+  js13kgames.com.
+- **Technicolor Tilt has no license file at all**, which under
+  copyright law defaults to "all rights reserved" — not "free to
+  use because no license was specified." Its own README opens with
+  *"Made by [@rndD] for js13kGames 2026,"* with credits to several
+  other named developers for specific parts of it.
+
+Being able to download a public GitHub repository doesn't come with
+permission to redistribute it somewhere else — that's specifically
+what a license grants, and neither of these grants it (one explicitly
+withholds it). This holds regardless of how the files arrived —
+uploaded directly, downloaded from GitHub, anywhere — it's about
+what each project's actual author has said is allowed. Two original
+games inspired by the same genres were built instead — see above.
+
+### Points — the host can see and adjust anyone's balance
+
+Host → Integrations now has a full points list: everyone's current
+balance, plus a field to add or take away any amount for anyone.
+**Nobody has to wonder whether the host changed something** — every
+adjustment is stored on the member's own record, and the next time
+their device is active (or the next time they open the app if it
+wasn't), a one-time notice tells them plainly: *"The host gave you
+20 points"* or *"The host took away 10 points."* It only shows once
+per adjustment, then marks itself seen.
+
 Checkers here uses **simplified rules — captures are optional, not
 forced** (real tournament checkers requires capturing whenever
 possible, including multi-jump chains; that logic is exactly where
@@ -560,7 +1077,7 @@ document everything else already reads, using Firestore's
 silently overwrite itself.
 
 **Four family-made games** are also in there — **Coin Sweeper**,
-**Coin Tic-Tac-Toe**, **Coin Sudoku**, and a **3D Platform Runner**
+**Coin Tic-Tac-Toe**, **Sudoku**, and a **3D Platform Runner**
 (built with Three.js) — each a complete, self-contained HTML game,
 played in an iframe. They're embedded as base64-encoded text rather
 than plain JS strings on purpose: their own code contains
@@ -569,6 +1086,25 @@ would collide with this file's own JavaScript if embedded any more
 directly — base64 sidesteps that completely, and the round-trip
 (encode → decode) was verified byte-for-byte identical to the
 originals before shipping.
+
+**Sudoku was renamed from "Coin Sudoku" and its coin theming
+removed** — cells used to show 🪙1 through 🪙9 and the whole board was
+styled gold, when the actual intent was simply "award points for
+finishing," not a coin-themed visual style. It's a plain number grid
+now (1–9, a blue color scheme instead of gold), still awarding the
+same points on completion — only the look changed, not the puzzle
+logic underneath it, which was checked directly (every row, column,
+and 3×3 box of a freshly generated solved grid contains 1–9 exactly
+once) before shipping the retheme.
+
+**Coin Sweeper and Sudoku had a real layout bug, now fixed** — both
+were missing a viewport meta tag entirely, and both sized their grid
+in fixed pixels rather than anything relative to screen width. On a
+narrow phone, that combination meant the game was wider than the
+screen with no way to see the whole thing without scrolling
+sideways. Both now use a responsive width (`min(92vw, ...)` capped at
+a sensible maximum) so they fit a phone screen directly, without
+scaling down to nothing on a wider tablet or desktop screen either.
 
 **Their coins now feed into the app's shared points** — each game got
 one small addition at its own win/game-over moment: a
@@ -580,7 +1116,7 @@ in-game coin (Sweeper also gives partial credit if a trap ends the
 round early — effort isn't wasted); Coin Tic-Tac-Toe gives a flat 10
 for a win / 5 for a draw (it's a shared-screen 2-player game, so
 there's no way to know which "coin color" is the person actually
-signed into the app); Coin Sudoku gives a flat 25 for finishing.
+signed into the app); Sudoku gives a flat 25 for finishing.
 `'*'` as the postMessage target is unusually permissive, but a
 `srcdoc` iframe has no normal origin to target more precisely — the
 main app validates the message's shape before trusting it, which is
@@ -665,6 +1201,56 @@ reply) to avoid obvious blunders and spot two-move tactics. Points
 scale with difficulty (15/25/40 for a win) regardless of which
 ruleset you picked.
 
+## Feature toggles — roll the app out gradually instead of all at once
+
+Host → Integrations has a three-state switch for each of the seven
+main tabs (Feed, Today's Question, Chat, Games, Calendar, Recipes,
+Family AI — Host itself is always available to the host):
+
+- **On** — works normally.
+- **Under construction** — stays visible in the navigation, but
+  tapping it shows a "coming soon" message instead of the real
+  thing. Good for letting people see what's ahead without letting
+  them in yet.
+- **Off** — removed from the navigation entirely, as if it doesn't exist.
+
+This was built specifically for introducing a big app gradually — start
+everyone with just Recipes, say, then switch Chat to "on" a week
+later, and so on, rather than handing over the whole thing at once.
+
+**Nothing is ever deleted or reset by any of this.** Turning a
+feature off (or to under-construction) only changes whether its tab
+shows and whether tapping it reaches the real view — the feature's
+own view is never touched, torn down, or rebuilt; it just stays
+hidden behind a separate placeholder screen. Turn Chat off for a
+month, turn it back on, and every conversation, message, and photo
+is exactly where it was.
+
+**Luna gets her own separate on/off switch** in the same place, below
+the seven main toggles — see the Recipes section above for why.
+
+## Notifications — an in-app center underneath everything else
+
+A 🔔 bell sits next to your profile picture in the top bar, with a
+small red dot whenever there's something unread. Tapping it opens a
+panel of recent notifications — new chat messages, new Feed posts,
+the daily question, points changes, anything else this app already
+tries to notify about — and **opening the panel marks everything in
+it as read**, so nothing keeps flagging itself as new once you've
+actually seen it.
+
+This exists specifically as the honest fallback promised earlier: OS
+push notifications depend on browser support and on permission having
+been granted, and don't work at all once the app is fully closed (see
+the Notifications section further down for why). The in-app center
+has none of those dependencies — every notification that would have
+tried to become an OS notification is *also* recorded here
+regardless of whether that OS notification succeeded, so there's
+always somewhere to find it inside the app itself. It's stored per
+device (not synced across a person's phone and tablet, say) — kept
+simple on purpose rather than adding a synced-across-devices system
+for what's meant to be a lightweight inbox.
+
 ## Host-gated paid Feed videos
 
 When posting to the Feed, the host can set an optional **"Cost to
@@ -690,23 +1276,228 @@ than two messages the day before, or the AI summary call fails for
 any reason, the box just doesn't appear that day — never blocks the
 new question from being generated.
 
-## Video calling — not built yet, and here's the honest reason why
+## The Family Tree tab
 
-WebRTC video calling is genuinely possible without a dedicated
-signaling server — Firestore can carry the offer/answer/ICE exchange
-between two devices, the same way it already carries everything else
-here. The part that doesn't have a free, reliable answer is **TURN**:
-free public **STUN** servers (which just help two devices discover
-their own network address) are easy to use and already exist, but
-many real-world connections — cellular data, symmetric NATs, some
-corporate or home routers — need a **TURN relay server** to actually
-connect the call, and a TURN server has to relay real audio/video
-traffic, which costs real bandwidth — nobody gives that away free at
-meaningful scale. A STUN-only version would work great on the same
-WiFi network and fail unpredictably elsewhere, which isn't a good
-foundation to ship silently. Worth building as its own dedicated
-piece, with that trade-off out in the open, rather than folded into
-everything else.
+A new main tab, genuinely separate from everything else, with the
+same host on/off/under-construction switch as every other main tab.
+
+**Fully open editing, exactly as asked** — there's no concept of
+"your entry" versus "someone else's" here. Any approved family member
+can add a person, edit anyone's details, or remove someone. If a
+grandparent's birth year is wrong or someone's phone number changed,
+whoever notices just fixes it — no ownership, no waiting on one
+specific person.
+
+**Per person**: name, nickname, cell phone, a separate home phone
+(for a married couple sharing a landline, say), where they live, and
+an open notes field for anything else worth recording. Parents and
+spouse are set by picking from everyone already in the tree — children
+aren't a separate field to fill in at all; they're computed
+automatically from who has *you* listed as a parent, so a child
+only ever needs to be entered once, from their own side.
+
+**The tree is laid out by generation automatically** — nobody places
+anyone on a grid manually. Each person's generation comes from the
+data itself: a root ancestor with no tracked parents starts at
+generation 1; everyone else is one generation past their parents.
+Someone who married into the family (their own parents were never
+added) takes their spouse's generation instead of defaulting to the
+top of the tree, which is what actually happens when a person with no
+tracked parents is treated as a new root rather than looking at who
+they married.
+
+That generation logic went through two real bugs during testing,
+worth being honest about rather than just presenting the finished
+version. The first attempt deadlocked whenever two spouses were
+married to *only* each other with neither having tracked parents —
+each was waiting on the other's generation, forever, and nobody ever
+resolved. Fixed by giving anyone with no tracked parents an immediate
+provisional generation, then upgrading it afterward if their spouse
+turned out to resolve higher through real parentage. This was caught
+specifically because it was tested against a realistic four-generation
+mock family (grandparents, a married-in parent, an unmarried sibling,
+a married-in daughter-in-law, a grandchild) rather than only the
+simple two-generation case that happened to work fine and would have
+shipped a real bug otherwise. **Spouse links are also kept symmetric
+automatically** — selecting someone as your spouse adds you to their
+own record too, since the generation logic and the tree's couple
+grouping both depend on that relationship being visible from both sides.
+
+**Connected to the Family AI**, exactly as asked — the whole tree
+(names, relationships, phone numbers, where people live, notes) is
+loaded the moment you're approved into the app, whether or not you've
+ever opened the Family Tree tab yourself, so asking NeumAI something
+about anyone in it works regardless of which tab you actually used to
+add that person.
+
+## The Torah tab
+
+A new main tab, its own spot in the navigation, with the same
+on/off/under-construction host switch as every other main tab. Three
+independent pieces:
+
+**Look up any text — not just what's tied to today's calendar.** Full
+Gemara, any daf, any perek, any sefer in Sefaria's library. Type
+"Shabbat 21a," "Bava Metzia 59b," or just a book name into the search
+box above the daily schedule, and it uses Sefaria's own `/api/name`
+autocompleter (verified its real response shape directly before
+building against it — see below) to resolve book names, authors, and
+references into an actual passage, opened in the same reader as
+everything else here. Typing just a book name with no specific
+daf/perek (e.g. "Shabbat" alone) will fetch the whole tractate as one
+long passage — it renders, but capped at a sane length with a note
+suggesting a specific daf, rather than trying to hand the browser an
+entire book as unbroken text.
+
+**Today's learning** pulls live from [Sefaria's public API](https://developers.sefaria.org) —
+genuinely free, no API key or account needed for any of what's used
+here. It shows the day's Parashat Hashavua, Daf Yomi, Daily Rambam,
+Daily Mishnah, and whatever else Sefaria's calendar returns for that
+day, each with a "Read" button that fetches the actual Hebrew and
+English text for that passage on demand and shows it right in the
+app. Verified directly against Sefaria's real, live API response
+before building against it, rather than assuming a shape from
+documentation alone.
+
+**A weekly family learning-hours tracker.** "Log time" records
+minutes learned plus an optional note of what was studied; everyone's
+logged time for the current week (sunset-to-sunset isn't tracked
+here — it's a plain calendar week, Sunday to Saturday) totals up into
+a simple leaderboard, most minutes first. Resets naturally each week
+since totals are only ever pulled for the current week's bucket.
+
+**A place to share shiurim and divrei Torah** — upload an audio or
+video recording with a title and an optional note, and it shows up
+for the whole family to play right in the app. Uses the exact same
+Cloudinary upload pipeline as the Feed and Chat already do, so it
+needs the same Host → Integrations Cloudinary setup and nothing
+additional.
+
+Open to every approved family member the same way most of this app
+is — nothing here is gender-gated at the software level; if that
+distinction matters for how a specific family uses it, that's a
+matter of how the people using it choose to use it, not something
+built into the access control.
+
+### Zmanim — a real fix, not just a rebuild
+
+Zmanim used to be host-controlled: one shared latitude/longitude/
+timezone set in Host → Integrations, and it genuinely wasn't
+working — checked directly against a live Hebcal response, and found
+the actual bug: the code was reading a field called `tzeit7083deg`,
+which doesn't exist in Hebcal's real output (it's `dusk`), so that
+row silently never rendered, and depending on whether the host had
+ever actually saved a location, the rest could come up empty too.
+
+Rebuilt properly, and moved to **each person's own choice, not the
+host's** — a plain city search (type "Lakewood," "Miami," "New York,"
+anything) using Hebcal's own free autocomplete, no API key needed,
+verified against its real response shape before writing a line of
+code against it. No coordinates, no altitude, nothing beyond picking
+your own city from the results — set once in the Calendar tab, saved
+to your own account, and used every time zmanim load for you from
+then on. Everyone in the family can be in a different location if
+that's genuinely true for them.
+
+### Today's practice, and Sefirat HaOmer
+
+A card right below zmanim shows what today calls for — Rosh Chodesh
+(Ya'aleh V'Yavo, full Hallel), Chanukah or Purim (Al Hanisim), a fast
+day (Aneinu), Selichot when Hebcal's own calendar includes it — pulled
+from the same Hebcal calendar data already used for holidays
+elsewhere in this app, not from any date math written here. That's a
+deliberate choice: getting details like this wrong matters, and
+Hebcal is already the authoritative source this app leans on for
+everything Hebrew-calendar-related. **A visible note says plainly
+that this is a general guide, and to check with your own rabbi or
+community's practice for anything you're unsure of** — it doesn't
+try to cover every halachic edge case (the exact start of Aseret
+Yemei Teshuva's specific liturgical substitutions, for one, isn't
+attempted here, specifically because getting that partially right
+felt worse than leaving it out).
+
+**Sefirat HaOmer** shows automatically during the actual Omer period
+(pulled from Hebcal, so it simply doesn't appear the rest of the
+year) with today's count and a personal "I counted tonight" button —
+your own checkbox, not shared with anyone else's.
+
+### Ask AI about your learning
+
+A button right at the top of the Torah tab for exactly what it says —
+stuck on something while learning, ask what it means. The AI is
+specifically instructed to flag genuine disagreements between
+commentators rather than presenting one opinion as settled fact, and
+to point toward asking your own rabbi for anything that's actually a
+practical halachic question rather than treating its own answer as a
+ruling.
+
+
+## Voice & video calling — built, with the STUN-only tradeoff stated plainly
+
+WebRTC calling is real now, reachable two ways: a **📞 Calls tab in
+the main navigation**, its own place alongside Feed, Chat, Games, and
+the rest — not tucked inside Chat — listing everyone approved with
+their name and photo, tap to call; and the same 📞 button still lives
+inside Chat too (both the floating button there and inside every
+individual chat room's header, which rings everyone in that specific
+conversation at once). Both paths lead to the exact same calling
+system underneath. Signaling — the offer/answer/ICE-candidate
+exchange two devices need to find each other — travels through
+Firestore the same way everything else here does, so there's no
+separate signaling server to run.
+
+**Calls has its own host on/off/under-construction switch**, same as
+every other main tab (Host → Integrations) — turning it off removes
+the nav tab entirely; the 📞/📹 buttons inside individual chat rooms
+stay put either way, since those are considered part of Chat itself,
+not the Calls tab specifically.
+
+**You can see and join calls already in progress.** The Calls tab has
+a "🔴 Happening now" section showing any call currently active that
+you're not already part of, with who's on it and a Join button —
+tapping it doesn't drop you straight in; it sends a request to
+whoever's already on the call, who sees a banner right inside their
+call screen ("[name] wants to join") with Allow/Deny. You see a
+"waiting to be let in" screen in the meantime, and either get pulled
+in automatically the moment someone allows you, or a plain message if
+they don't.
+
+**A call with only one person left in it closes itself.** If it drops
+to just you — because everyone else hung up, not because you're still
+waiting for someone's first invite to be answered, which is a
+different state entirely and doesn't trigger this — the call shows
+"Everyone else left" for a moment and then ends on its own instead of
+leaving you sitting alone in an empty call screen.
+
+**The honest tradeoff, stated up front rather than discovered
+mid-call:** this uses free public STUN servers only, no TURN relay
+server. STUN helps two devices discover how to reach each other
+directly and works well on most home networks — which is the normal
+case for a family app used mostly from home. It does **not**
+universally work: some cellular connections, symmetric NATs, and
+restrictive corporate or public networks need a TURN relay server to
+connect at all, and TURN servers relay real audio/video traffic,
+which costs real bandwidth — there's no free, meaningful-scale answer
+for that, which is exactly why it wasn't built before. Rather than
+leave that silent, a tile that fails to connect says so directly
+("Couldn't connect") instead of just sitting there black.
+
+**Group calls** work by connecting everyone directly to everyone else
+(a mesh, not a routed call through a server) — genuinely fine for a
+handful of people on decent connections, but bandwidth and CPU use
+scale up with each additional person, so this is realistically built
+for family-sized calls, not a large group. **Inviting someone into an
+ongoing call** (the ➕ button) works the same way whether they're
+joining a call that started as 1:1 or already has several people —
+everyone already in the call automatically connects to the new
+person the moment they join.
+
+**Minimizing a call** (🗕) shrinks it to a small floating bar you can
+keep talking through while browsing anywhere else in the app — Chat,
+Recipes, Games, wherever — tap it to bring the call back full-screen.
+Muting your mic and turning your camera on/off both work mid-call;
+turning the camera off falls back to showing your initial/photo
+instead of a frozen frame.
 
 ## Chat retention & space-saving — what actually happens, honestly
 

@@ -163,6 +163,7 @@
   .nav-item.accent-games.active { background: var(--green-tint); color: var(--green-dark); }
   .nav-item.accent-chat.active { background: var(--pink-tint); color: var(--pink-dark); }
   .nav-item.accent-calls.active { background: var(--turquoise-tint); color: var(--turquoise-dark); }
+  .nav-item.accent-torah.active { background: var(--amber-tint); color: var(--amber-dark); }
   .nav-item.accent-calendar.active { background: var(--turquoise-tint); color: var(--turquoise-dark); }
   .nav-item.accent-recipes.active { background: var(--amber-tint); color: var(--amber-dark); }
   .nav-item.accent-ai.active { background: var(--violet-tint); color: var(--violet-dark); }
@@ -302,6 +303,16 @@
     width: 64px; height: 64px; border-radius: 50%; font-size: 1.4rem;
   }
   #call-status-label { text-align: center; color: rgba(255,255,255,0.7); font-size: 0.82rem; padding: 6px; flex-shrink: 0; }
+  #call-join-request-banner {
+    display: none; align-items: center; gap: 10px; background: rgba(255,182,72,0.95); color: #1a1a24;
+    padding: 10px 14px; margin: 8px; border-radius: 14px; flex-shrink: 0; font-size: 0.85rem; font-weight: 600;
+  }
+  #call-join-request-banner span { flex: 1; }
+  #call-join-request-allow-btn, #call-join-request-deny-btn {
+    border: none; border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 0.8rem; cursor: pointer;
+  }
+  #call-join-request-allow-btn { background: var(--turquoise); color: #fff; }
+  #call-join-request-deny-btn { background: rgba(0,0,0,0.15); color: #1a1a24; padding: 7px 10px; }
   #call-controls-bar {
     display: flex; justify-content: center; gap: 14px; padding: 16px;
     padding-bottom: calc(16px + env(safe-area-inset-bottom)); flex-shrink: 0;
@@ -384,6 +395,13 @@
   .compose button .icon { width: 19px; height: 19px; }
   #chat-gif-btn { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.02em; }
 
+  /* Buttons on their own row, text field full-width on its own row below —
+     six buttons sharing a row with the text input left it too narrow to
+     see what you'd typed. */
+  .compose.compose-stacked { flex-direction: column; padding: 10px 12px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+  .compose-actions-row { display: flex; gap: 8px; justify-content: center; }
+  .compose-stacked #msg-input { width: 100%; }
+
   #reply-preview-strip {
     display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--bg);
     border-top: 1px solid var(--line); border-left: 4px solid var(--pink); flex-shrink: 0;
@@ -419,7 +437,7 @@
   .bubble-row .row-avatar { width: 26px; height: 26px; flex-shrink: 0; margin-bottom: 4px; }
 
   #voice-record-overlay {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 78px; background: #fff;
+    position: absolute; left: 0; right: 0; bottom: 0; height: calc(120px + env(safe-area-inset-bottom)); background: #fff;
     border-top: 1px solid var(--line); display: none; align-items: center; padding: 0 18px;
     justify-content: space-between; z-index: 20;
   }
@@ -653,8 +671,38 @@
       <!-- ---- CALLS ---- -->
       <div class="view" id="view-calls">
         <h2 class="view-title"></h2>
-        <p style="color:var(--muted); font-size:0.85rem; margin:-10px 0 16px;">Tap anyone to start a voice or video call.</p>
+        <div id="calls-ongoing-section" style="display:none; margin-bottom:22px;">
+          <h3 style="font-size:0.95rem; margin:0 0 10px;">🔴 Happening now</h3>
+          <div id="calls-ongoing-list"></div>
+        </div>
+        <p style="color:var(--muted); font-size:0.85rem; margin:0 0 16px;">Tap anyone to start a voice or video call.</p>
         <div id="calls-contacts-list"><p class="empty-state">Loading…</p></div>
+      </div>
+
+      <!-- ---- TORAH ---- -->
+      <div class="view" id="view-torah">
+        <h2 class="view-title"></h2>
+
+        <div style="text-align:center; margin: 0 0 20px;">
+          <button type="button" class="btn violet sm" id="torah-ask-btn">❓ Ask AI about something you're learning</button>
+        </div>
+
+        <h3 style="font-size:0.95rem; margin:0 0 10px;">📅 Today's learning</h3>
+        <div id="torah-calendar-list" style="margin-bottom:26px;"><p class="empty-state">Loading…</p></div>
+
+        <div class="card" style="margin-bottom:26px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <h3 style="font-size:0.95rem; margin:0;">⏱️ This week's learning</h3>
+            <button type="button" class="btn amber sm" id="torah-log-hours-btn">Log time</button>
+          </div>
+          <div id="torah-hours-list"><p class="empty-state">Loading…</p></div>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <h3 style="font-size:0.95rem; margin:0;">🎙️ Shiurim & divrei Torah</h3>
+          <button type="button" class="btn turquoise sm" id="torah-upload-btn">Upload</button>
+        </div>
+        <div id="torah-media-list"><p class="empty-state">Loading…</p></div>
       </div>
 
       <!-- ---- CALENDAR ---- -->
@@ -667,10 +715,27 @@
         </div>
 
         <div class="card" id="zmanim-card" style="margin-bottom:18px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
             <strong id="zmanim-date-label" style="font-family:var(--font-display);"></strong>
+            <button type="button" class="btn ghost sm" id="zmanim-location-open-btn">📍 <span id="zmanim-location-label">Set your location</span></button>
           </div>
           <div id="zmanim-list"><p class="empty-state">Loading…</p></div>
+        </div>
+
+        <div class="card" id="torah-today-card" style="margin-bottom:18px;">
+          <strong style="font-family:var(--font-display); display:block; margin-bottom:8px;">Today's practice</strong>
+          <div id="torah-today-notes"><p class="empty-state">Loading…</p></div>
+          <p style="font-size:0.72rem; color:var(--muted); margin:10px 0 0;">A general guide from the calendar data — for anything you're unsure of, check with your own rabbi or community practice.</p>
+        </div>
+
+        <div class="card" id="omer-card" style="margin-bottom:18px; display:none;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <div>
+              <strong style="font-family:var(--font-display); display:block;">Sefirat HaOmer</strong>
+              <span id="omer-count-label" style="font-size:0.85rem; color:var(--muted);"></span>
+            </div>
+            <button type="button" class="btn amber sm" id="omer-check-btn">I counted tonight</button>
+          </div>
         </div>
 
         <div class="cal-nav">
@@ -789,19 +854,6 @@
             <button type="button" class="btn violet sm" id="daily-question-save-btn">Save — use this now</button>
           </div>
 
-          <p style="font-size:0.8rem; color:var(--turquoise-dark); font-weight:700; margin:0 0 10px 0;">CALENDAR — location for zmanim &amp; holiday times</p>
-          <div class="card" style="margin-bottom:20px;">
-            <p style="margin:0 0 12px 0; font-size:0.85rem; color:var(--muted);">
-              Zmanim (sunrise, candle-lighting, etc.) depend on an exact
-              location. Defaults to New York City — change it if your
-              family is elsewhere.
-            </p>
-            <div class="field"><label class="field-label">Latitude</label><input type="text" id="calendar-lat-input" class="input" placeholder="40.7128" /></div>
-            <div class="field"><label class="field-label">Longitude</label><input type="text" id="calendar-lon-input" class="input" placeholder="-74.0060" /></div>
-            <div class="field"><label class="field-label">Timezone (IANA name)</label><input type="text" id="calendar-tzid-input" class="input" placeholder="America/New_York" /></div>
-            <button type="button" class="btn turquoise sm" id="calendar-location-save-btn">Save</button>
-          </div>
-
           <p style="font-size:0.8rem; color:var(--pink-dark); font-weight:700; margin:0 0 10px 0;">CHAT — everyone's photos, videos &amp; voice messages</p>
           <div class="card" style="margin-bottom:8px;">
             <p style="margin:0 0 12px 0; font-size:0.85rem; color:var(--muted);">
@@ -878,6 +930,7 @@
       <button class="nav-item accent-dq" data-view="dq"></button>
       <button class="nav-item accent-chat" data-view="chat"></button>
       <button class="nav-item accent-calls" data-view="calls"></button>
+      <button class="nav-item accent-torah" data-view="torah"></button>
       <button class="nav-item accent-games" data-view="games"></button>
       <button class="nav-item accent-calendar" data-view="calendar"></button>
       <button class="nav-item accent-recipes" data-view="recipes"></button>
@@ -932,6 +985,7 @@
           <div id="room-subtitle" style="font-size:0.72rem; color:var(--muted);"></div>
         </div>
         <div style="margin-left:auto; display:flex; gap:4px;">
+          <button type="button" class="icon-btn" id="room-ai-btn" title="Ask AI about this chat">🤖</button>
           <button type="button" class="icon-btn" id="room-call-audio-btn" title="Voice call" style="display:none;">📞</button>
           <button type="button" class="icon-btn" id="room-call-video-btn" title="Video call" style="display:none;">📹</button>
         </div>
@@ -942,14 +996,16 @@
       <div class="messages" id="messages"><p class="empty-state">Loading messages…</p></div>
       <div id="room-typing-indicator" style="display:none; font-size:0.78rem; color:var(--muted); padding:0 16px 6px;"></div>
       <div id="reply-preview-strip" style="display:none;"></div>
-      <form class="compose" id="compose-form">
-        <button type="button" class="icon-btn" id="chat-attach-photo-btn" title="Choose a photo"></button>
-        <button type="button" class="icon-btn" id="chat-camera-btn" title="Take a new photo"></button>
-        <button type="button" class="icon-btn" id="chat-attach-video-btn" title="Send a video"></button>
-        <button type="button" class="icon-btn" id="chat-gif-btn" title="Send a GIF">GIF</button>
+      <form class="compose compose-stacked" id="compose-form">
+        <div class="compose-actions-row">
+          <button type="button" class="icon-btn" id="chat-attach-photo-btn" title="Choose a photo"></button>
+          <button type="button" class="icon-btn" id="chat-camera-btn" title="Take a new photo"></button>
+          <button type="button" class="icon-btn" id="chat-attach-video-btn" title="Send a video"></button>
+          <button type="button" class="icon-btn" id="chat-gif-btn" title="Send a GIF">GIF</button>
+          <button type="button" class="icon-btn" id="chat-voice-btn" title="Hold to record a voice message"></button>
+          <button type="submit" title="Send"></button>
+        </div>
         <input type="text" id="msg-input" class="input" placeholder="Message…" autocomplete="off" required />
-        <button type="button" class="icon-btn" id="chat-voice-btn" title="Hold to record a voice message"></button>
-        <button type="submit"></button>
         <input type="file" id="chat-photo-input" accept="image/*" style="display:none;" />
         <input type="file" id="chat-camera-input" accept="image/*" capture="environment" style="display:none;" />
         <input type="file" id="chat-video-input" accept="video/*" style="display:none;" />
@@ -1015,6 +1071,78 @@
     </div>
   </div>
 
+  <!-- ---- Waiting to be let into a call you asked to join ---- -->
+  <div class="overlay" id="call-waiting-overlay">
+    <div class="sheet" style="max-width:340px; text-align:center;">
+      <div style="font-size:2.2rem; margin-bottom:8px;">🕓</div>
+      <h2>Asking to join…</h2>
+      <p style="color:var(--muted);">Waiting for someone already on the call to let you in.</p>
+      <button class="btn ghost block" id="call-waiting-cancel-btn" style="margin-top:16px;">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ---- Torah: read a text from today's learning ---- -->
+  <div class="overlay" id="torah-reader-overlay">
+    <div class="sheet" style="max-width:520px; max-height:80vh; display:flex; flex-direction:column;">
+      <h2 id="torah-reader-title">Loading…</h2>
+      <div id="torah-reader-body" style="overflow-y:auto; flex:1; margin-bottom:14px; line-height:1.7;"><p class="empty-state">Loading…</p></div>
+      <button class="btn ghost block" id="torah-reader-close-btn">Close</button>
+    </div>
+  </div>
+
+  <!-- ---- Zmanim location — your own choice, just a city, no coordinates ---- -->
+  <div class="overlay" id="zmanim-location-overlay">
+    <div class="sheet" style="max-width:380px;">
+      <h2>Your location</h2>
+      <p style="color:var(--muted); font-size:0.85rem; margin-top:-8px;">Just the city — no coordinates or altitude needed. This is your own setting, not shared with anyone else's.</p>
+      <div class="field"><input type="text" id="zmanim-location-search" class="input" placeholder="e.g. Lakewood, Miami, New York" autocomplete="off" /></div>
+      <div id="zmanim-location-results" style="max-height:40vh; overflow-y:auto;"></div>
+      <button class="btn ghost block" id="zmanim-location-close-btn" style="margin-top:12px;">Close</button>
+    </div>
+  </div>
+
+  <!-- ---- Ask AI about something you're learning ---- -->
+  <div class="overlay" id="torah-ask-overlay">
+    <div class="sheet" style="max-width:420px;">
+      <h2>❓ Ask about your learning</h2>
+      <div class="field"><input type="text" id="torah-ask-input" class="input" placeholder="e.g. What does Rashi mean here?" /></div>
+      <div id="torah-ask-answer" style="display:none; background:var(--violet-tint); color:var(--violet-dark); border-radius:var(--radius-md); padding:12px 14px; font-size:0.88rem; margin-bottom:14px; white-space:pre-wrap;"></div>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="torah-ask-close-btn">Close</button>
+        <button class="btn violet" id="torah-ask-submit-btn">Ask</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- Torah: log learning time ---- -->
+  <div class="overlay" id="torah-log-overlay">
+    <div class="sheet" style="max-width:380px;">
+      <h2>Log your learning time</h2>
+      <div class="field"><label class="field-label">Minutes</label><input type="number" id="torah-log-minutes" class="input" min="1" placeholder="e.g. 30" /></div>
+      <div class="field"><label class="field-label">What did you learn? (optional)</label><input type="text" id="torah-log-note" class="input" placeholder="e.g. Daf Yomi, Chullin 137" /></div>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="torah-log-cancel-btn">Cancel</button>
+        <button class="btn amber" id="torah-log-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- Torah: upload a shiur or dvar Torah ---- -->
+  <div class="overlay" id="torah-upload-overlay">
+    <div class="sheet" style="max-width:400px;">
+      <h2>Share a shiur or dvar Torah</h2>
+      <div class="field"><label class="field-label">Title</label><input type="text" id="torah-upload-title" class="input" placeholder="e.g. Rabbi Cohen — Parashat Ha'azinu" /></div>
+      <div class="field"><label class="field-label">Notes (optional)</label><input type="text" id="torah-upload-note" class="input" placeholder="A line about what it covers" /></div>
+      <button type="button" class="btn turquoise block" id="torah-upload-pick-btn" style="margin-bottom:14px;">Choose audio or video file</button>
+      <input type="file" id="torah-upload-file-input" accept="audio/*,video/*" style="display:none;" />
+      <div id="torah-upload-filename" style="font-size:0.8rem; color:var(--muted); margin:-8px 0 14px; text-align:center;"></div>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="torah-upload-cancel-btn">Cancel</button>
+        <button class="btn turquoise" id="torah-upload-save-btn">Upload</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ---- The call itself — full-screen by default, can be minimized to a
        small floating bar so the rest of the app stays usable while a call
        is going. Lives outside the normal view system on purpose, exactly
@@ -1022,6 +1150,11 @@
        switching tabs underneath it. ---- -->
   <div id="call-fullscreen" style="display:none;">
     <div id="call-videos-grid"></div>
+    <div id="call-join-request-banner" style="display:none;">
+      <span id="call-join-request-text"></span>
+      <button type="button" id="call-join-request-deny-btn">✕</button>
+      <button type="button" id="call-join-request-allow-btn">Let them in</button>
+    </div>
     <div id="call-status-label"></div>
     <div id="call-controls-bar">
       <button type="button" class="call-control-btn" id="call-mute-btn" title="Mute">🎤</button>
@@ -1120,6 +1253,21 @@
       <div class="sheet-actions">
         <button class="btn ghost" id="cook-ask-close-btn">Close</button>
         <button class="btn violet" id="cook-ask-submit-btn">Ask</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- Ask AI about a chat — sees the recent conversation as context,
+       so it can either answer a specific question or just look at what's
+       been said and offer to help. ---- -->
+  <div class="overlay" id="room-ai-overlay">
+    <div class="sheet" style="max-width:420px;">
+      <h2>🤖 Ask AI about this chat</h2>
+      <div class="field"><input type="text" id="room-ai-input" class="input" placeholder="Ask something, or leave blank and just ask how it can help" /></div>
+      <div id="room-ai-answer" style="display:none; background:var(--violet-tint); color:var(--violet-dark); border-radius:var(--radius-md); padding:12px 14px; font-size:0.88rem; margin-bottom:14px; white-space:pre-wrap;"></div>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="room-ai-close-btn">Close</button>
+        <button class="btn violet" id="room-ai-submit-btn">Ask</button>
       </div>
     </div>
   </div>
@@ -1241,7 +1389,7 @@
   import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
   import {
     getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, addDoc, getDocs,
-    query, where, orderBy, deleteDoc, serverTimestamp, arrayUnion, arrayRemove, increment
+    query, where, orderBy, limit, deleteDoc, serverTimestamp, arrayUnion, arrayRemove, increment, deleteField
   } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
   // Powers "Standard Rules" Chess — full FIDE move legality (castling, en
   // passant, check/checkmate/stalemate) is exactly the kind of thing worth
@@ -1302,7 +1450,8 @@
     emergency: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.3a2 2 0 0 1 3.4 0l8.2 14A2 2 0 0 1 20.2 20H3.8a2 2 0 0 1-1.7-2.7z"/><path d="M12 9v4M12 17h.01"/></svg>`,
     dailyq: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg>`,
     games: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7" width="19" height="11" rx="4"/><path d="M7 10.5v4M5 12.5h4"/><circle cx="16" cy="10.5" r="1" fill="currentColor" stroke="none"/><circle cx="18.5" cy="13" r="1" fill="currentColor" stroke="none"/></svg>`,
-    calls: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4.5c1 0 3 .3 4 1.5.7.9.6 2.3-.2 3.4l-1 1.3c1 2.2 2.8 4 5 5l1.3-1c1.1-.8 2.5-.9 3.4-.2 1.2 1 1.5 3 1.5 4-.1 1-1 1.5-2 1.5-8 0-14-6-14-14 0-1 .5-1.9 1.5-2z"/></svg>`
+    calls: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4.5c1 0 3 .3 4 1.5.7.9.6 2.3-.2 3.4l-1 1.3c1 2.2 2.8 4 5 5l1.3-1c1.1-.8 2.5-.9 3.4-.2 1.2 1 1.5 3 1.5 4-.1 1-1 1.5-2 1.5-8 0-14-6-14-14 0-1 .5-1.9 1.5-2z"/></svg>`,
+    torah: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4c-1.5 0-2.5 1-2.5 2.2v11.6C3.5 19 4.5 20 6 20h3V4z"/><path d="M18 4c1.5 0 2.5 1 2.5 2.2v11.6c0 1.2-1 2.2-2.5 2.2h-3V4z"/><path d="M9 4h6v16H9z"/></svg>`
   };
   function setIcon(el, name) { el.innerHTML = `<span class="icon">${ICONS[name]}</span>`; }
 
@@ -1329,6 +1478,7 @@
     { view: "dq", icon: "dailyq", label: "Today" },
     { view: "chat", icon: "chat", label: "Chat" },
     { view: "calls", icon: "calls", label: "Calls" },
+    { view: "torah", icon: "torah", label: "Torah" },
     { view: "games", icon: "games", label: "Games" },
     { view: "calendar", icon: "calendar", label: "Calendar" },
     { view: "recipes", icon: "recipes", label: "Recipes" },
@@ -1346,6 +1496,7 @@
   document.getElementById("view-feed").querySelector(".view-title").innerHTML = `${ICONS.feed.replace("<svg", '<svg style="width:22px;height:22px;"')} Feed`;
   document.getElementById("view-chat").querySelector(".view-title").innerHTML = `${ICONS.chat.replace("<svg", '<svg style="width:22px;height:22px;"')} Chats`;
   document.getElementById("view-calls").querySelector(".view-title").innerHTML = `${ICONS.calls.replace("<svg", '<svg style="width:22px;height:22px;"')} Calls`;
+  document.getElementById("view-torah").querySelector(".view-title").innerHTML = `${ICONS.torah.replace("<svg", '<svg style="width:22px;height:22px;"')} Torah`;
   document.getElementById("view-calendar").querySelector(".view-title").innerHTML = `${ICONS.calendar.replace("<svg", '<svg style="width:22px;height:22px;"')} Calendar`;
   document.getElementById("view-recipes").querySelector(".view-title").innerHTML = `${ICONS.recipes.replace("<svg", '<svg style="width:22px;height:22px;"')} Recipes`;
   document.getElementById("view-games").querySelector(".view-title").innerHTML = `${ICONS.games.replace("<svg", '<svg style="width:22px;height:22px;"')} Games`;
@@ -2213,7 +2364,7 @@
   }
 
   function renderView(view, param) {
-    if (!["feed", "chat", "room", "calls", "games", "calendar", "recipes", "ai", "host"].includes(view)) view = "feed";
+    if (!["feed", "chat", "room", "calls", "torah", "games", "calendar", "recipes", "ai", "host"].includes(view)) view = "feed";
     if (view === "room" && !param) view = "chat";
     if (currentView === "room" && view !== "room") leaveRoom();
     currentView = view;
@@ -2261,6 +2412,7 @@
     if (view === "chat" || view === "room") startChatListIfNeeded(); // list data stays live so the wide-screen column always has it
     if (view === "room") openRoom(param);
     if (view === "calls") startCallsViewIfNeeded();
+    if (view === "torah") startTorahIfNeeded();
     if (view === "games") startGamesIfNeeded();
     if (view === "calendar") startCalendarIfNeeded();
     if (view === "recipes") startRecipesIfNeeded();
@@ -2948,6 +3100,7 @@ ${factsText}`;
   let callableMembersCache = [];
   let incomingCallShownFor = new Set();
   let callWithVideo = false;
+  let callAutoLeaving = false;
   let callMicMuted = false;
   let callCameraOff = false;
   let callRingAudioContext = null;
@@ -2972,27 +3125,148 @@ ${factsText}`;
   // single-field array-contains query — no composite index needed, so
   // this works the moment it's deployed, nothing to configure. ----
   let callsWatchStarted = false;
+  let ongoingCallsCache = {};
+  let shownJoinRequestIds = new Set();
+  let callWaitingForApprovalId = null;
+  // A single, all-active-calls listener (one field, no composite index
+  // needed) — covers everything: ringing me for a call I've been
+  // invited to, keeping my own active call's peer connections in sync,
+  // watching for join requests on a call I'm in, watching my own
+  // pending join request elsewhere, and keeping the "happening now" list
+  // in the Calls tab current. When a call's status changes away from
+  // "active" it naturally drops out of this query — Firestore reports
+  // that as a "removed" change, which is used directly as the single
+  // signal for "this call is over, clean up," rather than needing to
+  // separately check a status field on every change.
   function startCallsWatch() {
     if (callsWatchStarted) return;
     callsWatchStarted = true;
-    onSnapshot(query(collection(db, "calls"), where("participantIds", "array-contains", member.id)), (snapshot) => {
+    onSnapshot(query(collection(db, "calls"), where("status", "==", "active")), (snapshot) => {
+      ongoingCallsCache = {};
+      snapshot.forEach((d) => { ongoingCallsCache[d.id] = d.data(); });
+
       snapshot.docChanges().forEach((change) => {
-        const call = change.doc.data();
         const callId = change.doc.id;
-        if (call.status === "ended") {
+        if (change.type === "removed") {
           incomingCallShownFor.delete(callId);
           if (callId === activeCallId) cleanupAndCloseCall();
+          if (callWaitingForApprovalId === callId) { showAlert("That call has ended."); hideCallWaitingUI(); }
           return;
         }
+        const call = change.doc.data();
         const myInfo = (call.participantInfo || {})[member.id];
         if (myInfo && myInfo.status === "invited" && callId !== activeCallId && !incomingCallShownFor.has(callId)) {
           incomingCallShownFor.add(callId);
           showIncomingCallUI(callId, call);
         }
-        if (callId === activeCallId) syncCallPeers(callId, call);
+        if (callId === activeCallId) {
+          syncCallPeers(callId, call);
+          checkJoinRequestsForActiveCall(call, callId);
+        }
+        if (callWaitingForApprovalId === callId) checkMyJoinRequestStatus(callId, call);
       });
+
+      if (currentView === "calls") renderOngoingCallsList();
     }, (err) => showConnError(err));
   }
+
+  // ---- Asking to join a call you weren't invited to ----
+  async function requestToJoinCall(callId, call) {
+    try {
+      await updateDoc(doc(db, "calls", callId), {
+        [`joinRequests.${member.id}`]: { name: member.name, photoURL: member.photoURL || "", status: "pending" }
+      });
+      callWaitingForApprovalId = callId;
+      document.getElementById("call-waiting-overlay").classList.add("open");
+    } catch (err) { showConnError(err); }
+  }
+  function checkMyJoinRequestStatus(callId, call) {
+    const myRequest = (call.joinRequests || {})[member.id];
+    if (!myRequest) {
+      hideCallWaitingUI();
+      showAlert("Your request to join wasn't approved.");
+      return;
+    }
+    if (myRequest.status === "approved") {
+      hideCallWaitingUI();
+      updateDoc(doc(db, "calls", callId), { [`joinRequests.${member.id}`]: deleteField() }).catch(() => {});
+      joinCall(callId, call.withVideo);
+    }
+  }
+  function hideCallWaitingUI() {
+    callWaitingForApprovalId = null;
+    document.getElementById("call-waiting-overlay").classList.remove("open");
+  }
+  document.getElementById("call-waiting-cancel-btn").addEventListener("click", async () => {
+    if (callWaitingForApprovalId) {
+      try { await updateDoc(doc(db, "calls", callWaitingForApprovalId), { [`joinRequests.${member.id}`]: deleteField() }); } catch (e) { /* best effort */ }
+    }
+    hideCallWaitingUI();
+  });
+
+  // ---- Being asked, while already on a call, to let someone else in ----
+  function checkJoinRequestsForActiveCall(call, callId) {
+    const requests = call.joinRequests || {};
+    const pendingIds = Object.keys(requests).filter((id) => requests[id].status !== "approved" && !shownJoinRequestIds.has(id));
+    const banner = document.getElementById("call-join-request-banner");
+    if (pendingIds.length === 0) { banner.style.display = "none"; return; }
+    const requesterId = pendingIds[0];
+    document.getElementById("call-join-request-text").textContent = `${requests[requesterId].name} wants to join`;
+    banner.style.display = "flex";
+    banner.dataset.callId = callId;
+    banner.dataset.requesterId = requesterId;
+  }
+  async function respondToJoinRequest(callId, requesterId, approve) {
+    try {
+      if (approve) {
+        await updateDoc(doc(db, "calls", callId), { [`joinRequests.${requesterId}.status`]: "approved" });
+      } else {
+        await updateDoc(doc(db, "calls", callId), { [`joinRequests.${requesterId}`]: deleteField() });
+      }
+    } catch (err) { showConnError(err); }
+  }
+  document.getElementById("call-join-request-allow-btn").addEventListener("click", async () => {
+    const banner = document.getElementById("call-join-request-banner");
+    await respondToJoinRequest(banner.dataset.callId, banner.dataset.requesterId, true);
+    shownJoinRequestIds.add(banner.dataset.requesterId);
+    banner.style.display = "none";
+  });
+  document.getElementById("call-join-request-deny-btn").addEventListener("click", async () => {
+    const banner = document.getElementById("call-join-request-banner");
+    await respondToJoinRequest(banner.dataset.callId, banner.dataset.requesterId, false);
+    shownJoinRequestIds.add(banner.dataset.requesterId);
+    banner.style.display = "none";
+  });
+
+  // ---- The "🔴 Happening now" list in the Calls tab ----
+  function renderOngoingCallsList() {
+    const section = document.getElementById("calls-ongoing-section");
+    const listEl = document.getElementById("calls-ongoing-list");
+    const relevant = Object.entries(ongoingCallsCache).filter(([id, c]) => !(c.participantIds || []).includes(member.id));
+    if (relevant.length === 0) { section.style.display = "none"; return; }
+    section.style.display = "block";
+    listEl.innerHTML = relevant.map(([id, c]) => {
+      const joinedNames = Object.values(c.participantInfo || {}).filter((p) => p.status === "joined").map((p) => p.name);
+      const alreadyRequested = c.joinRequests && c.joinRequests[member.id];
+      return `
+        <div class="card" style="margin-bottom:10px; display:flex; align-items:center; gap:10px;">
+          <div style="flex:1;">
+            <strong>${c.withVideo ? "📹" : "📞"} ${escapeHtml(joinedNames.join(", ") || "Call in progress")}</strong>
+            <div style="font-size:0.78rem; color:var(--muted);">${joinedNames.length} on the call</div>
+          </div>
+          <button type="button" class="btn turquoise sm" data-join-ongoing="${id}" ${alreadyRequested ? "disabled" : ""}>${alreadyRequested ? "Requested…" : "Join"}</button>
+        </div>
+      `;
+    }).join("");
+    listEl.querySelectorAll("[data-join-ongoing]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const callId = btn.dataset.joinOngoing;
+        requestToJoinCall(callId, ongoingCallsCache[callId]);
+      });
+    });
+  }
+
+
 
   function syncCallPeers(callId, call) {
     const info = call.participantInfo || {};
@@ -3006,6 +3280,20 @@ ${factsText}`;
       if (!stillIn) teardownCallPeer(id);
     });
     updateCallStatusLabel(call);
+    // If everyone else has left, being the only one still "in" a call
+    // isn't really a call anymore — leave automatically rather than
+    // sitting there alone until someone remembers to hang up. Careful
+    // distinction: this must NOT fire while still waiting for a first
+    // invite to be accepted (also "alone" at that point, but nobody has
+    // said no yet) — only once nobody is still pending, either.
+    const joinedCount = Object.values(info).filter((p) => p.status === "joined").length;
+    const stillWaitingOnSomeone = Object.values(info).some((p) => p.status === "invited");
+    if (joinedCount <= 1 && !stillWaitingOnSomeone && !callAutoLeaving) {
+      callAutoLeaving = true;
+      const label = document.getElementById("call-status-label");
+      if (label) label.textContent = "Everyone else left — ending the call…";
+      setTimeout(() => { if (activeCallId === callId) leaveCall(); callAutoLeaving = false; }, 1800);
+    }
   }
 
   async function connectToCallPeer(callId, otherId) {
@@ -3098,6 +3386,7 @@ ${factsText}`;
     }
     activeCallId = callId;
     callWithVideo = withVideo;
+    callAutoLeaving = false;
     callMicMuted = false;
     callCameraOff = false;
     startCallsWatch();
@@ -3320,9 +3609,209 @@ ${factsText}`;
   // own persistent view rather than a popup, exactly like every other
   // main tab in the app. ----
   let callsViewStarted = false;
+
+  // ============================================================
+  // TORAH — three independent pieces: today's learning schedule (from
+  // Sefaria's free, public, no-key API), a weekly family learning-hours
+  // tracker, and a place to share shiur/dvar Torah recordings.
+  // ============================================================
+
+  // ---- Today's learning, via Sefaria's Calendars API ----
+  let torahCalendarLoaded = false;
+  async function loadTorahCalendar() {
+    if (torahCalendarLoaded) return;
+    torahCalendarLoaded = true;
+    const listEl = document.getElementById("torah-calendar-list");
+    try {
+      const res = await fetch("https://www.sefaria.org/api/calendars");
+      if (!res.ok) throw new Error("bad response");
+      const data = await res.json();
+      const items = (data.calendar_items || []).filter((item) => item.ref);
+      if (items.length === 0) { listEl.innerHTML = '<p class="empty-state">Nothing to show right now.</p>'; return; }
+      listEl.innerHTML = items.map((item) => {
+        const titleEn = (item.title && item.title.en) || "Learning";
+        const valueEn = (item.displayValue && item.displayValue.en) || item.ref;
+        return `
+        <div class="card" style="margin-bottom:8px; display:flex; align-items:center; gap:10px;">
+          <div style="flex:1;">
+            <div style="font-size:0.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.03em;">${escapeHtml(titleEn)}</div>
+            <strong>${escapeHtml(valueEn)}</strong>
+          </div>
+          <button type="button" class="btn amber sm" data-torah-ref="${escapeHtml(item.ref)}" data-torah-title="${escapeHtml(titleEn + ": " + valueEn)}">Read</button>
+        </div>
+      `;
+      }).join("");
+      listEl.querySelectorAll("[data-torah-ref]").forEach((btn) => {
+        btn.addEventListener("click", () => openTorahReader(btn.dataset.torahRef, btn.dataset.torahTitle));
+      });
+    } catch (err) {
+      listEl.innerHTML = '<p class="empty-state">Couldn\'t reach Sefaria right now — check your connection and try again later.</p>';
+      torahCalendarLoaded = false; // allow a retry next time the tab is opened
+    }
+  }
+  async function fetchTorahVersionText(ref, lang) {
+    try {
+      const res = await fetch(`https://www.sefaria.org/api/v3/texts/${encodeURIComponent(ref)}?version=${lang}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const versions = data.versions || [];
+      return versions.length > 0 ? versions[0].text : null;
+    } catch (e) { return null; }
+  }
+  function flattenTorahText(text) {
+    if (Array.isArray(text)) return text.map(flattenTorahText).join(" ");
+    return text || "";
+  }
+  async function openTorahReader(ref, title) {
+    document.getElementById("torah-reader-title").textContent = title;
+    document.getElementById("torah-reader-body").innerHTML = '<p class="empty-state">Loading…</p>';
+    document.getElementById("torah-reader-overlay").classList.add("open");
+    const [heText, enText] = await Promise.all([fetchTorahVersionText(ref, "hebrew"), fetchTorahVersionText(ref, "english")]);
+    // Sefaria's text can include light inline formatting tags (italics,
+    // footnote markers) that are part of the source, not user content —
+    // rendered as-is rather than escaped, the same way a trusted API's
+    // own markup is treated anywhere else this app pulls from one.
+    let html = "";
+    if (heText) html += `<div dir="rtl" style="font-size:1.15rem; margin-bottom:14px; font-family:serif;">${flattenTorahText(heText)}</div>`;
+    if (enText) html += `<div style="color:var(--muted);">${flattenTorahText(enText)}</div>`;
+    document.getElementById("torah-reader-body").innerHTML = html || '<p class="empty-state">No text available for this passage right now.</p>';
+  }
+  document.getElementById("torah-reader-close-btn").addEventListener("click", () => {
+    document.getElementById("torah-reader-overlay").classList.remove("open");
+  });
+
+  // ---- Weekly learning-hours tracker ----
+  function getWeekStartKey(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - d.getDay()); // back up to this week's Sunday
+    return d.toISOString().slice(0, 10);
+  }
+  let torahHoursWatchStarted = false;
+  function startTorahHoursWatch() {
+    if (torahHoursWatchStarted) return;
+    torahHoursWatchStarted = true;
+    const currentWeekKey = getWeekStartKey(new Date());
+    onSnapshot(query(collection(db, "torah_learning_logs"), where("weekKey", "==", currentWeekKey)), (snapshot) => {
+      const totals = {};
+      snapshot.forEach((d) => {
+        const log = d.data();
+        if (!totals[log.memberId]) totals[log.memberId] = { name: log.memberName, minutes: 0 };
+        totals[log.memberId].minutes += log.minutes || 0;
+      });
+      const sorted = Object.values(totals).sort((a, b) => b.minutes - a.minutes);
+      const listEl = document.getElementById("torah-hours-list");
+      listEl.innerHTML = sorted.length === 0
+        ? '<p class="empty-state">Nobody has logged time this week yet.</p>'
+        : sorted.map((p) => `
+            <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line);">
+              <span>${escapeHtml(p.name)}</span>
+              <strong>${Math.floor(p.minutes / 60)}h ${p.minutes % 60}m</strong>
+            </div>
+          `).join("");
+    }, (err) => showConnError(err));
+  }
+  document.getElementById("torah-log-hours-btn").addEventListener("click", () => {
+    document.getElementById("torah-log-minutes").value = "";
+    document.getElementById("torah-log-note").value = "";
+    document.getElementById("torah-log-overlay").classList.add("open");
+  });
+  document.getElementById("torah-log-cancel-btn").addEventListener("click", () => {
+    document.getElementById("torah-log-overlay").classList.remove("open");
+  });
+  document.getElementById("torah-log-save-btn").addEventListener("click", async () => {
+    const minutes = parseInt(document.getElementById("torah-log-minutes").value, 10);
+    if (!minutes || minutes <= 0) { await showAlert("Enter how many minutes you learned."); return; }
+    try {
+      await addDoc(collection(db, "torah_learning_logs"), {
+        memberId: member.id, memberName: member.name, minutes,
+        note: document.getElementById("torah-log-note").value.trim(),
+        createdAt: serverTimestamp(), weekKey: getWeekStartKey(new Date())
+      });
+      document.getElementById("torah-log-overlay").classList.remove("open");
+    } catch (err) { showConnError(err); }
+  });
+
+  // ---- Shiur / dvar Torah uploads — reuses the same Cloudinary pipeline as everywhere else media gets uploaded in this app ----
+  let torahMediaWatchStarted = false;
+  function startTorahMediaWatch() {
+    if (torahMediaWatchStarted) return;
+    torahMediaWatchStarted = true;
+    onSnapshot(query(collection(db, "torah_media"), orderBy("createdAt", "desc"), limit(30)), (snapshot) => {
+      const listEl = document.getElementById("torah-media-list");
+      if (snapshot.empty) { listEl.innerHTML = '<p class="empty-state">Nothing shared yet — be the first!</p>'; return; }
+      listEl.innerHTML = snapshot.docs.map((d) => {
+        const m = d.data();
+        return `
+          <div class="card" style="margin-bottom:10px;">
+            <strong>${escapeHtml(m.title)}</strong>
+            ${m.note ? `<p style="font-size:0.82rem; color:var(--muted); margin:2px 0 8px;">${escapeHtml(m.note)}</p>` : ""}
+            ${m.mediaType === "video"
+              ? `<video src="${m.mediaUrl}" controls preload="metadata" style="width:100%; border-radius:10px;"></video>`
+              : `<audio src="${m.mediaUrl}" controls style="width:100%;"></audio>`}
+            <div style="font-size:0.72rem; color:var(--muted); margin-top:6px;">Shared by ${escapeHtml(m.uploaderName)}</div>
+          </div>
+        `;
+      }).join("");
+    }, (err) => showConnError(err));
+  }
+  let torahUploadFile = null;
+  document.getElementById("torah-upload-btn").addEventListener("click", () => {
+    document.getElementById("torah-upload-title").value = "";
+    document.getElementById("torah-upload-note").value = "";
+    document.getElementById("torah-upload-filename").textContent = "";
+    torahUploadFile = null;
+    document.getElementById("torah-upload-overlay").classList.add("open");
+  });
+  document.getElementById("torah-upload-cancel-btn").addEventListener("click", () => {
+    document.getElementById("torah-upload-overlay").classList.remove("open");
+  });
+  document.getElementById("torah-upload-pick-btn").addEventListener("click", () => {
+    document.getElementById("torah-upload-file-input").click();
+  });
+  document.getElementById("torah-upload-file-input").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      torahUploadFile = file;
+      document.getElementById("torah-upload-filename").textContent = file.name;
+    }
+  });
+  document.getElementById("torah-upload-save-btn").addEventListener("click", async () => {
+    const title = document.getElementById("torah-upload-title").value.trim();
+    if (!title || !torahUploadFile) { await showAlert("Please add a title and choose a file."); return; }
+    const saveBtn = document.getElementById("torah-upload-save-btn");
+    saveBtn.disabled = true;
+    showBusy("Uploading…");
+    try {
+      const mediaType = torahUploadFile.type.startsWith("audio/") ? "audio" : "video";
+      const { url } = await uploadToCloudinary(torahUploadFile);
+      await addDoc(collection(db, "torah_media"), {
+        title, note: document.getElementById("torah-upload-note").value.trim(),
+        mediaUrl: url, mediaType,
+        uploaderId: member.id, uploaderName: member.name, createdAt: serverTimestamp()
+      });
+      document.getElementById("torah-upload-overlay").classList.remove("open");
+    } catch (err) {
+      showConnError(err);
+    } finally {
+      hideBusy();
+      saveBtn.disabled = false;
+    }
+  });
+
+  let torahStarted = false;
+  function startTorahIfNeeded() {
+    loadTorahCalendar();
+    startTorahHoursWatch();
+    startTorahMediaWatch();
+    torahStarted = true;
+  }
+
   function startCallsViewIfNeeded() {
     startCallContactsWatch();
+    startCallsWatch();
     renderCallContactsList("calls-contacts-list", false);
+    renderOngoingCallsList();
     callsViewStarted = true;
   }
   document.getElementById("incoming-call-accept-btn").addEventListener("click", () => {
@@ -3360,6 +3849,54 @@ ${factsText}`;
   });
   document.getElementById("call-invite-close-btn").addEventListener("click", () => {
     document.getElementById("call-invite-overlay").classList.remove("open");
+  });
+
+  // ---- Ask AI about a chat — pulls in the last 30 messages of whichever
+  // room you're in as context, so it can answer a specific question or,
+  // if you leave the question blank, just look at the conversation and
+  // offer to help however seems useful.
+  document.getElementById("room-ai-btn").addEventListener("click", () => {
+    if (!currentRoomId) return;
+    document.getElementById("room-ai-input").value = "";
+    document.getElementById("room-ai-answer").style.display = "none";
+    document.getElementById("room-ai-overlay").classList.add("open");
+  });
+  document.getElementById("room-ai-close-btn").addEventListener("click", () => {
+    document.getElementById("room-ai-overlay").classList.remove("open");
+  });
+  document.getElementById("room-ai-submit-btn").addEventListener("click", async () => {
+    if (!currentRoomId) return;
+    const question = document.getElementById("room-ai-input").value.trim();
+    const answerEl = document.getElementById("room-ai-answer");
+    const submitBtn = document.getElementById("room-ai-submit-btn");
+    submitBtn.disabled = true;
+    answerEl.style.display = "block";
+    answerEl.textContent = "Thinking…";
+    try {
+      const msgsSnap = await getDocs(query(collection(db, "chats", currentRoomId, "messages"), orderBy("createdAt", "desc"), limit(30)));
+      const transcript = msgsSnap.docs
+        .slice()
+        .reverse()
+        .map((d) => {
+          const m = d.data();
+          const text = m.text || (m.mediaType ? `[shared a ${m.mediaType}]` : "[empty message]");
+          return `${m.authorName || "someone"}: ${text}`;
+        })
+        .join("\n");
+      const prompt = question
+        ? `Here is a recent family chat conversation:\n${transcript}\n\nQuestion: ${question}`
+        : `Here is a recent family chat conversation:\n${transcript}\n\nLook at this conversation and see how you can help — a short summary, a suggested reply, or anything else genuinely useful. Keep it brief.`;
+      const answer = await callAI(
+        "You are a helpful assistant with access to a family chat conversation. Answer naturally and concisely — 1 to 4 sentences unless more detail is clearly needed.",
+        [{ role: "user", text: prompt }],
+        "chat"
+      );
+      answerEl.textContent = answer;
+    } catch (err) {
+      answerEl.textContent = "Sorry, I couldn't get an answer right now.";
+    } finally {
+      submitBtn.disabled = false;
+    }
   });
 
   document.getElementById("room-call-audio-btn").addEventListener("click", () => {
@@ -3878,30 +4415,12 @@ ${factsText}`;
   const hebrewRecurrenceCache = {}; // "eventId:year" -> resolved ISO date or null
   let todayPopupCheckedThisSession = false;
 
-  let calendarConfig = null;
-  let calendarLocationWatchStarted = false;
   function startCalendarLocationWatch() {
-    if (calendarLocationWatchStarted) return;
-    calendarLocationWatchStarted = true;
-    onSnapshot(doc(db, "settings", "calendarLocation"), (snap) => {
-      calendarConfig = snap.exists() ? snap.data() : null;
-      document.getElementById("calendar-lat-input").value = (calendarConfig && calendarConfig.lat) || "40.7128";
-      document.getElementById("calendar-lon-input").value = (calendarConfig && calendarConfig.lon) || "-74.0060";
-      document.getElementById("calendar-tzid-input").value = (calendarConfig && calendarConfig.tzid) || "America/New_York";
-    }, (err) => showConnError(err));
+    // No-op now — zmanim location moved from a single host-wide setting
+    // to each person's own choice (see fetchAndRenderZmanim), so there's
+    // nothing app-wide left to watch here. Left in place only because
+    // startCalendarIfNeeded still calls it, harmlessly.
   }
-  document.getElementById("calendar-location-save-btn").addEventListener("click", async () => {
-    const lat = document.getElementById("calendar-lat-input").value.trim();
-    const lon = document.getElementById("calendar-lon-input").value.trim();
-    const tzid = document.getElementById("calendar-tzid-input").value.trim();
-    try {
-      await setDoc(doc(db, "settings", "calendarLocation"), { lat, lon, tzid }, { merge: true });
-      await showAlert("Saved.");
-      fetchAndRenderZmanim();
-    } catch (err) {
-      showConnError(err);
-    }
-  });
 
   function isoOf(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -4061,22 +4580,30 @@ ${factsText}`;
 
   async function fetchAndRenderZmanim() {
     document.getElementById("zmanim-date-label").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+    const loc = member.zmanimLocation;
+    const labelEl = document.getElementById("zmanim-location-label");
+    if (labelEl) labelEl.textContent = loc && loc.name ? loc.name : "Set your location";
     const listEl = document.getElementById("zmanim-list");
-    const lat = (calendarConfig && calendarConfig.lat) || "40.7128";
-    const lon = (calendarConfig && calendarConfig.lon) || "-74.0060";
-    const tzid = (calendarConfig && calendarConfig.tzid) || "America/New_York";
+    if (!loc || !loc.id) {
+      listEl.innerHTML = '<p class="empty-state">Tap "Set your location" above — just the city, no coordinates needed.</p>';
+      return;
+    }
     try {
-      const url = `https://www.hebcal.com/zmanim?cfg=json&date=${isoOf(new Date())}&lat=${lat}&lon=${lon}&tzid=${encodeURIComponent(tzid)}`;
+      const url = `https://www.hebcal.com/zmanim?cfg=json&geonameid=${loc.id}&date=${isoOf(new Date())}`;
       const res = await withTimeout(fetch(url), 10000, "Hebcal is taking too long to respond.");
       const data = await res.json();
       const times = (data && data.times) || {};
+      // Field names verified directly against a live Hebcal response before
+      // building this — the original version used "tzeit7083deg", which
+      // doesn't actually exist in the API's output (it's "dusk"), so that
+      // row silently never appeared. Fixed here.
       const labels = {
         alotHaShachar: "Dawn", misheyakir: "Earliest tallit/tefillin", sunrise: "Sunrise",
         sofZmanShma: "Latest Shema", sofZmanTfilla: "Latest morning prayers", chatzot: "Midday",
         minchaGedola: "Earliest Mincha", minchaKetana: "Preferred Mincha", plagHaMincha: "Plag HaMincha",
-        sunset: "Sunset", tzeit7083deg: "Nightfall", candlelighting: "Candle lighting", chatzotNight: "Midnight"
+        sunset: "Sunset", dusk: "Nightfall (tzeit)", candlelighting: "Candle lighting", chatzotNight: "Midnight"
       };
-      const rows = Object.keys(times).filter((k) => labels[k]).map((k) => {
+      const rows = Object.keys(times).filter((k) => labels[k] && times[k]).map((k) => {
         const t = new Date(times[k]);
         const timeStr = isNaN(t) ? times[k] : t.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
         return `<div class="zmanim-row"><span>${labels[k]}</span><span>${timeStr}</span></div>`;
@@ -4086,6 +4613,164 @@ ${factsText}`;
       listEl.innerHTML = '<p class="empty-state">Couldn\'t load zmanim — check your internet.</p>';
     }
   }
+
+  // ---- Zmanim location — each person's own choice, a plain city search
+  // (Hebcal's own free autocomplete — verified its real response shape
+  // directly before building against it) rather than lat/lon/altitude. ----
+  let zmanimSearchDebounce = null;
+  document.getElementById("zmanim-location-open-btn").addEventListener("click", () => {
+    document.getElementById("zmanim-location-search").value = "";
+    document.getElementById("zmanim-location-results").innerHTML = "";
+    document.getElementById("zmanim-location-overlay").classList.add("open");
+  });
+  document.getElementById("zmanim-location-close-btn").addEventListener("click", () => {
+    document.getElementById("zmanim-location-overlay").classList.remove("open");
+  });
+  document.getElementById("zmanim-location-search").addEventListener("input", (e) => {
+    clearTimeout(zmanimSearchDebounce);
+    const q = e.target.value.trim();
+    const resultsEl = document.getElementById("zmanim-location-results");
+    if (q.length < 2) { resultsEl.innerHTML = ""; return; }
+    zmanimSearchDebounce = setTimeout(async () => {
+      resultsEl.innerHTML = '<p class="empty-state">Searching…</p>';
+      try {
+        const res = await fetch(`https://www.hebcal.com/complete?q=${encodeURIComponent(q)}`);
+        const results = await res.json();
+        if (!Array.isArray(results) || results.length === 0) {
+          resultsEl.innerHTML = '<p class="empty-state">No matches — try a different spelling.</p>';
+          return;
+        }
+        resultsEl.innerHTML = results.map((r) => `
+          <div class="card" style="margin-bottom:6px; display:flex; align-items:center; gap:8px; cursor:pointer;" data-loc-id="${r.id}" data-loc-value="${escapeHtml(r.value)}">
+            <span>${r.flag || "📍"}</span><span style="flex:1;">${escapeHtml(r.value)}</span>
+          </div>
+        `).join("");
+        resultsEl.querySelectorAll("[data-loc-id]").forEach((row) => {
+          row.addEventListener("click", () => selectZmanimLocation(row.dataset.locId, row.dataset.locValue));
+        });
+      } catch (err) {
+        resultsEl.innerHTML = '<p class="empty-state">Search failed — check your connection and try again.</p>';
+      }
+    }, 400);
+  });
+  async function selectZmanimLocation(id, name) {
+    try {
+      await updateDoc(doc(db, "members", member.id), { zmanimLocation: { id: parseInt(id, 10), name } });
+      document.getElementById("zmanim-location-overlay").classList.remove("open");
+      fetchAndRenderZmanim();
+      loadTodaysPracticeNotes();
+    } catch (err) { showConnError(err); }
+  }
+
+  // ---- Today's practice — what today's date calls for, using Hebcal's
+  // own holiday categories/titles rather than any calendar math written
+  // here, since getting this kind of thing wrong matters. Deliberately
+  // conservative: only maps a well-known, uncontroversial addition to an
+  // event Hebcal itself already identified, with a visible note to check
+  // with a rabbi for anything uncertain, rather than trying to cover
+  // every halachic edge case in code.
+  async function loadTodaysPracticeNotes() {
+    const listEl = document.getElementById("torah-today-notes");
+    const loc = member.zmanimLocation;
+    const geoParam = loc && loc.id ? `&geonameid=${loc.id}` : "";
+    const todayIso = isoOf(new Date());
+    try {
+      const url = `https://www.hebcal.com/hebcal?v=1&cfg=json&start=${todayIso}&end=${todayIso}&maj=on&min=on&nx=on&mod=off${geoParam}`;
+      const res = await withTimeout(fetch(url), 10000, "Hebcal is taking too long to respond.");
+      const data = await res.json();
+      const items = data.items || [];
+      const notes = [];
+      items.forEach((item) => {
+        const title = item.title || "";
+        if (item.category === "roshchodesh") {
+          notes.push({ label: title, note: "Add Ya'aleh V'Yavo in the Amidah and Birkat Hamazon; the full Hallel is said." });
+        } else if (/Chanukah/i.test(title)) {
+          notes.push({ label: title, note: "Add Al Hanisim in the Amidah and Birkat Hamazon." });
+        } else if (/Purim/i.test(title) && !/Katan/i.test(title)) {
+          notes.push({ label: title, note: "Add Al Hanisim in the Amidah and Birkat Hamazon." });
+        } else if (/Fast|Tzom|Taanit/i.test(title)) {
+          notes.push({ label: title, note: "Fast day — add Aneinu in the Amidah (Shacharit and Mincha)." });
+        } else if (/Selichot/i.test(title)) {
+          notes.push({ label: title, note: "Selichot are said." });
+        }
+      });
+      listEl.innerHTML = notes.length
+        ? notes.map((n) => `<div style="padding:6px 0; border-bottom:1px solid var(--line);"><strong>${escapeHtml(n.label)}</strong><div style="font-size:0.82rem; color:var(--muted);">${escapeHtml(n.note)}</div></div>`).join("")
+        : '<p class="empty-state">Nothing extra to add today.</p>';
+    } catch (e) {
+      listEl.innerHTML = '<p class="empty-state">Couldn\'t load today\'s info right now.</p>';
+    }
+  }
+
+  // ---- Sefirat HaOmer — today's count (from Hebcal, only present during
+  // the actual Omer period) plus a simple personal "did I count tonight" checkbox. ----
+  async function loadOmerStatus() {
+    const card = document.getElementById("omer-card");
+    const todayIso = isoOf(new Date());
+    try {
+      const url = `https://www.hebcal.com/hebcal?v=1&cfg=json&start=${todayIso}&end=${todayIso}&o=on&maj=off&min=off&mod=off`;
+      const res = await withTimeout(fetch(url), 10000, "Hebcal is taking too long to respond.");
+      const data = await res.json();
+      const omerItem = (data.items || []).find((item) => item.category === "omer");
+      if (!omerItem) { card.style.display = "none"; return; }
+      card.style.display = "block";
+      const countText = (omerItem.omer && omerItem.omer.count && omerItem.omer.count.en) || omerItem.title;
+      document.getElementById("omer-count-label").textContent = countText;
+      const checkSnap = await getDoc(doc(db, "omer_checks", `${member.id}_${todayIso}`));
+      const btn = document.getElementById("omer-check-btn");
+      if (checkSnap.exists()) {
+        btn.textContent = "✓ Counted";
+        btn.disabled = true;
+      } else {
+        btn.textContent = "I counted tonight";
+        btn.disabled = false;
+      }
+    } catch (e) {
+      card.style.display = "none";
+    }
+  }
+  document.getElementById("omer-check-btn").addEventListener("click", async () => {
+    const todayIso = isoOf(new Date());
+    try {
+      await setDoc(doc(db, "omer_checks", `${member.id}_${todayIso}`), {
+        memberId: member.id, memberName: member.name, dateKey: todayIso, checkedAt: serverTimestamp()
+      });
+      const btn = document.getElementById("omer-check-btn");
+      btn.textContent = "✓ Counted";
+      btn.disabled = true;
+    } catch (err) { showConnError(err); }
+  });
+
+  // ---- Ask AI about something you're learning ----
+  document.getElementById("torah-ask-btn").addEventListener("click", () => {
+    document.getElementById("torah-ask-input").value = "";
+    document.getElementById("torah-ask-answer").style.display = "none";
+    document.getElementById("torah-ask-overlay").classList.add("open");
+  });
+  document.getElementById("torah-ask-close-btn").addEventListener("click", () => {
+    document.getElementById("torah-ask-overlay").classList.remove("open");
+  });
+  document.getElementById("torah-ask-submit-btn").addEventListener("click", async () => {
+    const question = document.getElementById("torah-ask-input").value.trim();
+    if (!question) { await showAlert("Type what you'd like to ask."); return; }
+    const answerEl = document.getElementById("torah-ask-answer");
+    const submitBtn = document.getElementById("torah-ask-submit-btn");
+    submitBtn.disabled = true;
+    answerEl.style.display = "block";
+    answerEl.textContent = "Thinking…";
+    try {
+      const answer = await callAI(
+        "You are a knowledgeable, respectful study partner helping someone understand a piece of Torah, Talmud, or Jewish text they're learning. Explain clearly and concisely. Where there's a genuine debate among commentators, say so rather than presenting one view as the only one — and for anything touching practical religious law (halacha lemaaseh), suggest confirming with their own rabbi rather than treating this as a final ruling.",
+        [{ role: "user", text: question }],
+        "chat"
+      );
+      answerEl.textContent = answer;
+    } catch (err) {
+      answerEl.textContent = "Sorry, I couldn't get an answer right now.";
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
 
   async function maybeShowTodayPopup() {
     if (todayPopupCheckedThisSession) return;
@@ -4124,6 +4809,8 @@ ${factsText}`;
     }, (err) => showConnError(err));
 
     fetchAndRenderZmanim();
+    loadTodaysPracticeNotes();
+    loadOmerStatus();
 
     // Populate the Hebrew date picker once.
     document.getElementById("event-hebrew-day").innerHTML =
@@ -6790,7 +7477,7 @@ ${rawSteps}`;
   // Turning something off only hides it; nothing about its data is ever
   // touched, so switching it back on picks up exactly where it left off.
   // ============================================================
-  const FEATURE_KEYS = { feed: "Feed", dq: "Today's Question", chat: "Chat", calls: "Calls", games: "Games", calendar: "Calendar", recipes: "Recipes", ai: "Family AI" };
+  const FEATURE_KEYS = { feed: "Feed", dq: "Today's Question", chat: "Chat", calls: "Calls", torah: "Torah", games: "Games", calendar: "Calendar", recipes: "Recipes", ai: "Family AI" };
   let featureToggles = {};
   let featureTogglesWatchStarted = false;
   function startFeatureTogglesWatch() {

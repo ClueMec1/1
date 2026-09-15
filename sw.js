@@ -3,7 +3,7 @@
 // (chat, calendar, feed, recipes, AI) always comes fresh from Firestore
 // — and the Gemini API — never the cache.
 
-const CACHE = "fam-board-shell-v40";
+const CACHE = "fam-board-shell-v58";
 const SHELL_FILES = [
   "./index.html",
   "./manifest.json"
@@ -23,6 +23,21 @@ self.addEventListener("activate", (event) => {
     )
   );
   self.clients.claim();
+});
+
+// Tapping a notification should actually take you to the app — focus an
+// already-open tab if there is one, otherwise open a new one, rather than
+// just dismissing the notification with nothing happening.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ("focus" in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow("./index.html");
+    })
+  );
 });
 
 self.addEventListener("fetch", (event) => {

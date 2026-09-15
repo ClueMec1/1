@@ -162,6 +162,7 @@
   .nav-item.accent-dq.active { background: var(--amber-tint); color: var(--amber-dark); }
   .nav-item.accent-games.active { background: var(--green-tint); color: var(--green-dark); }
   .nav-item.accent-chat.active { background: var(--pink-tint); color: var(--pink-dark); }
+  .nav-item.accent-calls.active { background: var(--turquoise-tint); color: var(--turquoise-dark); }
   .nav-item.accent-calendar.active { background: var(--turquoise-tint); color: var(--turquoise-dark); }
   .nav-item.accent-recipes.active { background: var(--amber-tint); color: var(--amber-dark); }
   .nav-item.accent-ai.active { background: var(--violet-tint); color: var(--violet-dark); }
@@ -649,6 +650,13 @@
         <div id="chat-rows"></div>
       </div>
 
+      <!-- ---- CALLS ---- -->
+      <div class="view" id="view-calls">
+        <h2 class="view-title"></h2>
+        <p style="color:var(--muted); font-size:0.85rem; margin:-10px 0 16px;">Tap anyone to start a voice or video call.</p>
+        <div id="calls-contacts-list"><p class="empty-state">Loading…</p></div>
+      </div>
+
       <!-- ---- CALENDAR ---- -->
       <div class="view" id="view-calendar">
         <h2 class="view-title"></h2>
@@ -869,6 +877,7 @@
       <button class="nav-item accent-feed" data-view="feed"></button>
       <button class="nav-item accent-dq" data-view="dq"></button>
       <button class="nav-item accent-chat" data-view="chat"></button>
+      <button class="nav-item accent-calls" data-view="calls"></button>
       <button class="nav-item accent-games" data-view="games"></button>
       <button class="nav-item accent-calendar" data-view="calendar"></button>
       <button class="nav-item accent-recipes" data-view="recipes"></button>
@@ -1292,7 +1301,8 @@
     stop: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`,
     emergency: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.3a2 2 0 0 1 3.4 0l8.2 14A2 2 0 0 1 20.2 20H3.8a2 2 0 0 1-1.7-2.7z"/><path d="M12 9v4M12 17h.01"/></svg>`,
     dailyq: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg>`,
-    games: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7" width="19" height="11" rx="4"/><path d="M7 10.5v4M5 12.5h4"/><circle cx="16" cy="10.5" r="1" fill="currentColor" stroke="none"/><circle cx="18.5" cy="13" r="1" fill="currentColor" stroke="none"/></svg>`
+    games: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7" width="19" height="11" rx="4"/><path d="M7 10.5v4M5 12.5h4"/><circle cx="16" cy="10.5" r="1" fill="currentColor" stroke="none"/><circle cx="18.5" cy="13" r="1" fill="currentColor" stroke="none"/></svg>`,
+    calls: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4.5c1 0 3 .3 4 1.5.7.9.6 2.3-.2 3.4l-1 1.3c1 2.2 2.8 4 5 5l1.3-1c1.1-.8 2.5-.9 3.4-.2 1.2 1 1.5 3 1.5 4-.1 1-1 1.5-2 1.5-8 0-14-6-14-14 0-1 .5-1.9 1.5-2z"/></svg>`
   };
   function setIcon(el, name) { el.innerHTML = `<span class="icon">${ICONS[name]}</span>`; }
 
@@ -1318,6 +1328,7 @@
     { view: "feed", icon: "feed", label: "Feed" },
     { view: "dq", icon: "dailyq", label: "Today" },
     { view: "chat", icon: "chat", label: "Chat" },
+    { view: "calls", icon: "calls", label: "Calls" },
     { view: "games", icon: "games", label: "Games" },
     { view: "calendar", icon: "calendar", label: "Calendar" },
     { view: "recipes", icon: "recipes", label: "Recipes" },
@@ -1334,6 +1345,7 @@
   });
   document.getElementById("view-feed").querySelector(".view-title").innerHTML = `${ICONS.feed.replace("<svg", '<svg style="width:22px;height:22px;"')} Feed`;
   document.getElementById("view-chat").querySelector(".view-title").innerHTML = `${ICONS.chat.replace("<svg", '<svg style="width:22px;height:22px;"')} Chats`;
+  document.getElementById("view-calls").querySelector(".view-title").innerHTML = `${ICONS.calls.replace("<svg", '<svg style="width:22px;height:22px;"')} Calls`;
   document.getElementById("view-calendar").querySelector(".view-title").innerHTML = `${ICONS.calendar.replace("<svg", '<svg style="width:22px;height:22px;"')} Calendar`;
   document.getElementById("view-recipes").querySelector(".view-title").innerHTML = `${ICONS.recipes.replace("<svg", '<svg style="width:22px;height:22px;"')} Recipes`;
   document.getElementById("view-games").querySelector(".view-title").innerHTML = `${ICONS.games.replace("<svg", '<svg style="width:22px;height:22px;"')} Games`;
@@ -2201,7 +2213,7 @@
   }
 
   function renderView(view, param) {
-    if (!["feed", "chat", "room", "games", "calendar", "recipes", "ai", "host"].includes(view)) view = "feed";
+    if (!["feed", "chat", "room", "calls", "games", "calendar", "recipes", "ai", "host"].includes(view)) view = "feed";
     if (view === "room" && !param) view = "chat";
     if (currentView === "room" && view !== "room") leaveRoom();
     currentView = view;
@@ -2248,6 +2260,7 @@
     if (view === "feed") startFeedIfNeeded();
     if (view === "chat" || view === "room") startChatListIfNeeded(); // list data stays live so the wide-screen column always has it
     if (view === "room") openRoom(param);
+    if (view === "calls") startCallsViewIfNeeded();
     if (view === "games") startGamesIfNeeded();
     if (view === "calendar") startCalendarIfNeeded();
     if (view === "recipes") startRecipesIfNeeded();
@@ -2950,6 +2963,7 @@ ${factsText}`;
     onSnapshot(query(collection(db, "members"), where("status", "==", "approved")), (snapshot) => {
       callableMembersCache = [];
       snapshot.forEach((d) => { if (d.id !== member.id) callableMembersCache.push({ id: d.id, ...d.data() }); });
+      if (currentView === "calls") renderCallContactsList("calls-contacts-list", false);
     }, (err) => showConnError(err));
   }
 
@@ -3256,8 +3270,8 @@ ${factsText}`;
     document.getElementById("incoming-call-overlay").classList.remove("open");
   }
 
-  function renderCallContactsList() {
-    const listEl = document.getElementById("call-contacts-list");
+  function renderCallContactsList(containerId, closeOverlayAfter) {
+    const listEl = document.getElementById(containerId);
     if (callableMembersCache.length === 0) { listEl.innerHTML = '<p class="empty-state">No one else has joined yet.</p>'; return; }
     listEl.innerHTML = callableMembersCache.map((m) => `
       <div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);">
@@ -3268,10 +3282,10 @@ ${factsText}`;
       </div>
     `).join("");
     listEl.querySelectorAll("[data-call-audio]").forEach((btn) => {
-      btn.addEventListener("click", () => { document.getElementById("call-contacts-overlay").classList.remove("open"); startCall([btn.dataset.callAudio], false); });
+      btn.addEventListener("click", () => { if (closeOverlayAfter) document.getElementById("call-contacts-overlay").classList.remove("open"); startCall([btn.dataset.callAudio], false); });
     });
     listEl.querySelectorAll("[data-call-video]").forEach((btn) => {
-      btn.addEventListener("click", () => { document.getElementById("call-contacts-overlay").classList.remove("open"); startCall([btn.dataset.callVideo], true); });
+      btn.addEventListener("click", () => { if (closeOverlayAfter) document.getElementById("call-contacts-overlay").classList.remove("open"); startCall([btn.dataset.callVideo], true); });
     });
   }
   function renderCallInviteList() {
@@ -3296,12 +3310,21 @@ ${factsText}`;
   }
 
   document.getElementById("start-call-btn").addEventListener("click", () => {
-    renderCallContactsList();
+    renderCallContactsList("call-contacts-list", true);
     document.getElementById("call-contacts-overlay").classList.add("open");
   });
   document.getElementById("call-contacts-close-btn").addEventListener("click", () => {
     document.getElementById("call-contacts-overlay").classList.remove("open");
   });
+  // ---- The Calls tab in the nav — the same contacts list, but as its
+  // own persistent view rather than a popup, exactly like every other
+  // main tab in the app. ----
+  let callsViewStarted = false;
+  function startCallsViewIfNeeded() {
+    startCallContactsWatch();
+    renderCallContactsList("calls-contacts-list", false);
+    callsViewStarted = true;
+  }
   document.getElementById("incoming-call-accept-btn").addEventListener("click", () => {
     const overlay = document.getElementById("incoming-call-overlay");
     acceptIncomingCall(overlay.dataset.callId, overlay.dataset.withVideo === "1");
@@ -6767,7 +6790,7 @@ ${rawSteps}`;
   // Turning something off only hides it; nothing about its data is ever
   // touched, so switching it back on picks up exactly where it left off.
   // ============================================================
-  const FEATURE_KEYS = { feed: "Feed", dq: "Today's Question", chat: "Chat", games: "Games", calendar: "Calendar", recipes: "Recipes", ai: "Family AI" };
+  const FEATURE_KEYS = { feed: "Feed", dq: "Today's Question", chat: "Chat", calls: "Calls", games: "Games", calendar: "Calendar", recipes: "Recipes", ai: "Family AI" };
   let featureToggles = {};
   let featureTogglesWatchStarted = false;
   function startFeatureTogglesWatch() {
